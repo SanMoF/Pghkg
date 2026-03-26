@@ -1,50 +1,148 @@
-# CLAUDE.md
+Here's the `CLAUDE.md`:
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+```markdown
+# CLAUDE.md — SCARA Robot Kinematics
 
-## Project Overview
+## Project Context
+C++ robotics library for a 4-DOF SCARA robot.
+You have full read/write access to all files in this project.
 
-ESP32 embedded firmware project using PlatformIO with ESP-IDF framework. The codebase provides a collection of hardware abstraction libraries for sensors and actuators, with the main application in `src/main.cpp`.
+## DH Parameter Convention
+Column order is strictly: `[theta, d, alpha, r]`
+- `theta` — joint angle (degrees)
+- `d`     — link offset (prismatic joint displacement)
+- `alpha` — link twist
+- `r`     — link length
 
-## Build & Development Commands
+## Unit Convention
+- **All angles in and out of every function must be in degrees**
+- Use `DEG_TO_RAD` / `RAD_TO_DEG` macros for internal trig calls
+- Never expose radians at the API boundary
 
-```bash
-# Build project
-pio run
+## File Ownership
+You own and must keep these files fully up to date after every change:
+- `Robotics.h`
+- `Robotics.cpp`
 
-# Flash to device
-pio run --target upload
+Always rewrite the full file — never show partial snippets.
 
-# Start serial monitor (115200 baud)
-pio device monitor
+---
 
-# Build with ESP-IDF directly (alternative)
-idf.py build
-idf.py flash
-idf.py monitor
+## Required Structs (Robotics.h)
+
+```cpp
+struct IKSolution {
+    float theta1; // degrees
+    float theta2; // degrees
+    float z;      // linear, same units as link lengths
+    float theta4; // degrees
+};
 ```
 
-## Architecture
+---
 
-**Target:** ESP32 (`board = esp32dev`, `framework = espidf`)
+## Inverse Kinematics — Geometric Approach
 
-**Structure:**
-- `src/main.cpp` - Application entry point
-- `lib/<module>/` - Hardware abstraction libraries, each with C++ wrapper classes:
-  - **Sensors:** AS5600 (magnetic encoder, I2C), TCS34725 (color), Ultrasonic, Joystick, LineF
-  - **Actuators:** SimplePWM (LED/timing), SimpleGPIO, Stepper, Servo_Stepper, HBridge, Buzzer
-  - **Communication:** SimpleUART, SimpleSerialBT (Bluetooth), SimpleI2C
-  - **Control:** PID_CAYETANO, SimplePID, Filter, Robotics
-  - **Utilities:** SimpleLCD, SimpleRGB, SimpleTimer, SimpleADC, Keyboard, Viscometer
+Port the following MATLAB logic exactly. Do not substitute an algebraic
+or Jacobian approach.
 
-**Pattern:** Each library uses a C++ class with:
-- `begin()` / `setup()` for initialization
-- ESP-IDF native APIs (GPIO, I2C, LEDC/PWM, UART drivers)
-- Header in `include/` or `Include/`, implementation in `.cpp`
+**MATLAB reference:**
+```matlab
+function [num_solutions, solutions] = InverseKinematics(op_var, DH)
+    x = op_var(1); y = op_var(2); z = op_var(3); tool_angle = op_var(4);
+    L1 = DH(1,4); L2 = DH(2,4);
+    p = sqrt(x*x + y*y);
+    solutions = zeros(2,4);
+    if p > L1+L2 || p < abs(L1-L2)
+        num_solutions = 0; return
+    end
+    gamma = atan2(y, x);
+    alpha = acos((L1*L1 + p*p - L2*L2) / (2*L1*p));
+    beta  = acos((L2*L2 + L1*L1 - p*p) / (2*L1*L2));
+    solutions(1,1) = rad2deg(gamma - alpha);
+    solutions(1,2) = rad2deg(pi - beta);
+    solutions(1,3) = z;
+    solutions(1,4) = tool_angle - solutions(1,1) - solutions(1,2);
+    num_solutions = 1;
+    if p == L1+L2 || p == abs(L1-L2), return, end
+    solutions(2,1) = rad2deg(gamma + alpha);
+    solutions(2,2) = rad2deg(beta - pi);
+    solutions(2,3) = z;
+    solutions(2,4) = tool_angle - solutions(2,1) - solutions(2,2);
+    num_solutions = 2;
+end
+```
 
-**Main application** (`src/main.cpp`): Homing routine for stepper motor using AS5600 magnetic encoder feedback with deadband control.
+**C++ signature:**
+```cpp
+int Inverse_Kinematics(float DH_table[][4], float x, float y, float z,
+                       float tool_angle_deg, IKSolution solutions[2]);
+```
 
-## Key Dependencies
+**Rules:**
+- Extract `L1 = DH_table[0][3]`, `L2 = DH_table[1][3]` (r column, index 3)
+- Input `tool_angle_deg` is in degrees
+- All fields of `IKSolution` output in degrees
+- Clamp `cos_alpha` and `cos_beta` to `[-1, 1]` before `acosf()`
+- Singular check tolerance: `fabsf(p - (L1+L2)) < 1e-6f`
 
-- ESP-IDF components: `driver`, `esp_timer`, `freertos`, `i2c`, `ledc` (PWM), `gpio`
-- Unity test framework available in `.pio/libdeps/native/Unity/` (for native unit testing)
+---
+
+## Best Solution Selection
+
+Port the following MATLAB logic exactly:
+
+**MATLAB reference:**
+```matlab
+function index = findBestSolution(solutions, DH, weights)
+    best_error = 1000000;
+    index = 1;
+    for i = 1:2
+        error = 0;
+        for j = 2:4
+            error = error + weights(j-1) * abs(solutions(i,j) - DH(j,1));
+            if error < best_error
+                best_error = error;
+                index = i;
+            end
+        end
+    end
+end
+```
+
+**C++ signature:**
+```cpp
+int findBestSolution(IKSolution solutions[2], int num_solutions,
+                     float current_joints[4], float weights[3]);
+```
+
+**Rules:**
+- `current_joints` order: `[theta1, theta2, z, theta4]` (degrees)
+- Weights apply to `theta1` (w[0]), `theta2` (w[1]), `theta4` (w[2])
+- Skip `z` — it is identical in both solutions
+- Return index `0` or `1`
+- If `num_solutions == 1`, return `0` immediately
+
+---
+
+## DH_to_HMatrix
+
+Respect column order `[theta, d, alpha, r]`:
+- `theta = DH_Parameters[0]` — convert to radians internally
+- `d     = DH_Parameters[1]`
+- `alpha = DH_Parameters[2]` — convert to radians internally
+- `r     = DH_Parameters[3]`
+
+Output is a 4×4 homogeneous matrix in row-major flat array (16 floats).
+
+---
+
+## General Rules
+- Never break existing methods: `setup`, `setLinkLengths`, `Forward_Kinematics`,
+  `Matrix_multiplication`
+- All trig uses `cosf`, `sinf`, `atan2f`, `acosf`, `sqrtf`, `fabsf`
+- Use `#define DEG_TO_RAD (M_PI / 180.0f)` and `#define RAD_TO_DEG (180.0f / M_PI)`
+  defined at the top of `Robotics.cpp`
+- No dynamic memory allocation
+- No external dependencies beyond `<math.h>`
+```
