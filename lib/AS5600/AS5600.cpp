@@ -14,6 +14,7 @@ AS5600::AS5600(i2c_port_t port, int sda_pin, int scl_pin,
                uint32_t freq_hz, uint32_t timeout)
     : _port(port), _sda(sda_pin), _scl(scl_pin),
       _freq(freq_hz), _timeout_ms(timeout),
+      _last_angle_deg(0.0f), _accumulated_deg(0.0f), _accum_ready(false),
       _prev_angle_deg(0.0f), _prev_time_us(0), _velocity_ready(false)
 {}
 
@@ -227,6 +228,32 @@ float AS5600::getRawAngleRad() const
 {
     uint16_t raw = 0;
     return (getRawAngle(&raw) == ESP_OK) ? _rawToRad(raw) : NAN;
+}
+
+float AS5600::getAccumulatedAngleDeg()
+{
+    uint16_t raw = 0;
+    if (getAngle(&raw) != ESP_OK) return NAN;
+
+    float now_deg = _rawToDeg(raw);
+
+    if (!_accum_ready) {
+        _last_angle_deg = now_deg;
+        _accum_ready    = true;
+        return _accumulated_deg;
+    }
+
+    float delta = _wrapDelta(now_deg - _last_angle_deg);
+    _accumulated_deg += delta;
+    _last_angle_deg   = now_deg;
+
+    return _accumulated_deg;
+}
+
+void AS5600::resetAccumulatedAngle()
+{
+    _accumulated_deg = 0.0f;
+    _accum_ready     = false;   // forzar re-seed en la próxima lectura
 }
 
 // ─────────────────────────────────────────────────────────────

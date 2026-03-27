@@ -212,6 +212,9 @@ public:
      * @brief Unfiltered raw angle in radians [0, 2π).
      */
     float getRawAngleRad() const;
+    // Método público nuevo
+float getAccumulatedAngleDeg();  // Ángulo global (puede superar ±360°)
+void  resetAccumulatedAngle();   // Resetear a cero desde posición actual
 
     // ── Velocity ────────────────────────────────────────────
     /**
@@ -342,17 +345,23 @@ public:
     void printStatus() const;
 
 private:
+    
+
     i2c_port_t  _port;
     int         _sda;
     int         _scl;
     uint32_t    _freq;
     uint32_t    _timeout_ms;
 
+    // Accumulated angle
+    float   _last_angle_deg;
+    float   _accumulated_deg;
+    bool    _accum_ready;
+
     // Velocity tracking
     float   _prev_angle_deg;
     int64_t _prev_time_us;
     bool    _velocity_ready;
-
     // Low-level I2C
     esp_err_t _read(uint8_t reg, uint8_t *data, size_t len) const;
     esp_err_t _write(uint8_t reg, const uint8_t *data, size_t len) const;
