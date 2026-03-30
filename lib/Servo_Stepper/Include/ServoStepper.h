@@ -1,0 +1,27 @@
+#pragma once
+
+#include "AS5600.h"
+#include "SimpleGPIO.h"
+#include "SimplePWM.h"
+#include "PID_CAYETANO.h"
+
+#define SERVO_DEADBAND_DEG 1.0f
+
+class ServoStepper
+{
+public:
+    void setup(uint8_t dir_pin, uint8_t step_pin,
+               uint8_t pwm_channel, TimerConfig *timer,
+               float pid_gains[3], float pid_limit);
+
+    void goToAngle(float target_deg);       // absolute, multi-turn
+    void moveToRelAngle(float target_deg);  // 0–360 only, shortest path
+
+private:
+    SimpleGPIO   _dir;
+    SimplePWM    _step;
+    AS5600       _encoder;
+    PID_CAYETANO _pid;
+
+    void _applyControl(float error);        // shared drive logic
+};
