@@ -71,7 +71,7 @@ extern "C" void app_main()
                        &STEPPER_TIMER_0, base_gains, dt);
 
     Z_Stepper.setup(Z_Stepper_PWM_Pin, Z_Stepper_Dir_Pin, Z_Stepper_PWM_Ch,
-                    &STEPPER_TIMER_1, /*steps_per_rev=*/200,
+                    &STEPPER_TIMER_1, /*steps_per_rev=*/1600,
                     z_gains[0], z_gains[1], z_gains[2], (uint32_t)dt);
 
     // Wifi and Mqtt setups
@@ -80,6 +80,7 @@ extern "C" void app_main()
     mqtt.publish(TOPIC_PUB, "ESP32 online");
 
     xTaskCreate(mqtt_task, "mqtt_task", 4096, NULL, 5, NULL);
+    float prev_theta2 = -9999.0f;
 
     while (1)
     {
@@ -87,16 +88,13 @@ extern "C" void app_main()
         {
             switch (mode)
             {
+                // local variable before while(1)
+
             case 0:
                 Base_Stepper.goToAngle(theta1);
-                Z_Stepper.moveDegrees(theta2, 1600);
+                Z_Stepper.goToAngle(theta2, 6000); // fixed base freq, no prev needed
                 Z_Stepper.update();
-
-                printf("Accumulated: %.2f\n",
-
-                       Base_Stepper._encoder.getAngleDeg());
                 break;
-
             case 1:
                 printf("XYZ — x:%.1f y:%.1f z:%.1f\n",
                        cmd_x, cmd_y, cmd_z);

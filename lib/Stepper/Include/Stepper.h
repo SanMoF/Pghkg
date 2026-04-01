@@ -11,6 +11,10 @@ struct TimerConfig;
 class Stepper
 {
 public:
+    // Public for debug printing
+    int32_t  _target_position;
+    uint32_t _current_frequency;
+
     Stepper();
     ~Stepper();
 
@@ -18,8 +22,10 @@ public:
                TimerConfig *timer_config, uint32_t steps_per_rev,
                float kp, float ki, float kd, uint32_t dt_us);
 
-    void moveDegrees(float degrees, uint32_t base_frequency);
-    void update();
+    void goToAngle(float target_deg, uint32_t base_frequency);  // absolute
+    void moveDegrees(float degrees, uint32_t base_frequency);   // relative
+
+    void update();  // call every timer tick
 
     int32_t getPosition() const;
     bool    isMoving()    const { return _is_moving; }
@@ -39,12 +45,10 @@ private:
     uint8_t  _pwm_channel;
 
     uint32_t _base_frequency;
-    uint32_t _current_frequency;
     uint32_t _dt_us;
 
     bool     _direction;
     int32_t  _calculated_position;
-    int32_t  _target_position;
     uint32_t _steps_per_revolution;
 
     uint32_t _last_update_ms;

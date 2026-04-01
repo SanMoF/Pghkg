@@ -47,9 +47,9 @@ static TimerConfig STEPPER_TIMER_0{
 // Stepper 2 — independent frequency control
 static TimerConfig STEPPER_TIMER_1{
     .timer = LEDC_TIMER_1,
-    .frequency = 650,
-    .bit_resolution = LEDC_TIMER_8_BIT,
-    .mode = LEDC_HIGH_SPEED_MODE};
+    .frequency = 4050,
+    .bit_resolution = LEDC_TIMER_12_BIT,
+    .mode = LEDC_LOW_SPEED_MODE};
 
 // DC motors — both share this, duty is per-channel
 static TimerConfig DC_TIMER{
@@ -71,7 +71,7 @@ float theta1 = 0, theta2 = 0, theta3 = 0, theta4 = 0;
 float cmd_x = 0, cmd_y = 0, cmd_z = 0;
 //PID Gains
 float base_gains[3] = {8, 1.48, 0.0};
-float z_gains[3] = {20.0f, 0.0f, 0.0f}; // tune for Z axis
+float z_gains[3] = {10.0f, 0.0f, 0.0f}; // tune for Z axis
 // In definitions.h, add this global:
 char pub_buf[32];
 #endif // __DEFINITIONS_H__
