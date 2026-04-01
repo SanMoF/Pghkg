@@ -62,12 +62,19 @@ static void mqtt_task(void *pvParameters)
 extern "C" void app_main()
 {
     esp_task_wdt_deinit();
-    
-    float gains[3] = {100, 1, 0};
+
+    // Timers Setups
     Timer.setup(timerinterrupt, "Main_timer");
     Timer.startPeriodic(dt);
+    // Motors Setup
+    Base_Stepper.setup(Base_Dir_Pin, Base_PWM_Pin, Base_PWM_Ch,
+                       &STEPPER_TIMER_0, base_gains, dt);
 
-    // motor.setup(5, 4, 0, &PWM_STEPPER_TIMER, gains, dt);
+    Z_Stepper.setup(Z_Stepper_PWM_Pin, Z_Stepper_Dir_Pin, Z_Stepper_PWM_Ch,
+                    &STEPPER_TIMER_1, /*steps_per_rev=*/200,
+                    z_gains[0], z_gains[1], z_gains[2], (uint32_t)dt);
+
+    // Wifi and Mqtt setups
     wifi.setup(WIFI_SSID, WIFI_PASSWORD);
     mqtt.setup(MQTT_BROKER_URI, MQTT_CLIENT_ID, TOPIC_SUB);
     mqtt.publish(TOPIC_PUB, "ESP32 online");
@@ -81,8 +88,13 @@ extern "C" void app_main()
             switch (mode)
             {
             case 0:
-                printf("Joints — t1:%.1f t2:%.1f t3:%.1f t4:%.1f\n",
-                       theta1, theta2, theta3, theta4);
+                Base_Stepper.goToAngle(theta1);
+                Z_Stepper.moveDegrees(theta2, 1600);
+                Z_Stepper.update();
+
+                printf("Accumulated: %.2f\n",
+
+                       Base_Stepper._encoder.getAngleDeg());
                 break;
 
             case 1:
@@ -93,6 +105,10 @@ extern "C" void app_main()
             default:
                 break;
             }
+
+            float Base_position = Base_Stepper._encoder.getAccumulatedAngleDeg();
+            snprintf(pub_buf, sizeof(pub_buf), "%.2f", Base_position);
+            mqtt.publish(TOPIC_PUB, pub_buf);
         }
     }
 }

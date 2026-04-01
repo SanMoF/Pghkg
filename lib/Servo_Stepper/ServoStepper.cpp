@@ -13,7 +13,7 @@ void ServoStepper::setup(uint8_t dir_pin, uint8_t step_pin,
     _step.setDuty(0.0f);
 
     _pid.setup(pid_gains, pid_limit);
-    _pid.setULimit(2000);
+    _pid.setULimit(6000);
 
     _encoder.begin();
 
@@ -33,10 +33,17 @@ void ServoStepper::_applyControl(float error)
         return;
     }
 
-    float u = _pid.computedU(error);
+    float u    = _pid.computedU(error);
+    float freq = fabsf(u);
+
+    if (freq < 100.0f) {          // below LEDC minimum → stop cleanly
+        _step.setDuty(0.0f);
+        return;
+    }
+
     _dir.set(u > 0 ? 0 : 1);
+    _step.setFrequency(freq);
     _step.setDuty(50.0f);
-    _step.setFrequency(fabsf(u));
 }
 
 // ─────────────────────────────────────────────────────────────

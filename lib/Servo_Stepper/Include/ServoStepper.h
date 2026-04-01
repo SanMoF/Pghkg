@@ -5,11 +5,12 @@
 #include "SimplePWM.h"
 #include "PID_CAYETANO.h"
 
-#define SERVO_DEADBAND_DEG 1.0f
+#define SERVO_DEADBAND_DEG 0.5f
 
 class ServoStepper
 {
 public:
+AS5600       _encoder;
     void setup(uint8_t dir_pin, uint8_t step_pin,
                uint8_t pwm_channel, TimerConfig *timer,
                float pid_gains[3], float pid_limit);
@@ -20,7 +21,6 @@ public:
 private:
     SimpleGPIO   _dir;
     SimplePWM    _step;
-    AS5600       _encoder;
     PID_CAYETANO _pid;
 
     void _applyControl(float error);        // shared drive logic
