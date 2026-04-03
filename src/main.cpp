@@ -67,12 +67,18 @@ extern "C" void app_main()
     Timer.setup(timerinterrupt, "Main_timer");
     Timer.startPeriodic(dt);
     // Motors Setup
-    Base_Stepper.setup(Base_Dir_Pin, Base_PWM_Pin, Base_PWM_Ch,
+    Base_Stepper.setup(BASE_DIR_PIN, BASE_PWM_PIN, BASE_PWM_CH,
                        &STEPPER_TIMER_0, base_gains, dt);
 
-    Z_Stepper.setup(Z_Stepper_PWM_Pin, Z_Stepper_Dir_Pin, Z_Stepper_PWM_Ch,
+    Z_Stepper.setup(Z_DIR_PIN, Z_PWM_PIN, Z_PWM_CH,
                     &STEPPER_TIMER_1, /*steps_per_rev=*/1600,
                     z_gains[0], z_gains[1], z_gains[2], (uint32_t)dt);
+    arm_motor.setup(DC_PINS, DC_CH, ENC_PINS, &DC_TIMER,
+                    arm_vel_gains, arm_pos_gains, dt);
+    arm_motor.setMode(DCMotorMode::POSITION);
+    // Need to include the Robtoics library for Forward and Inverse Kinematics
+    // Consider code for Inverse kineamtics is already for a scara 4dof
+    
 
     // Wifi and Mqtt setups
     wifi.setup(WIFI_SSID, WIFI_PASSWORD);
@@ -93,7 +99,10 @@ extern "C" void app_main()
             case 0:
                 Base_Stepper.goToAngle(theta1);
                 Z_Stepper.goToAngle(theta2, 6000); // fixed base freq, no prev needed
+                arm_motor.setTargetPosition(theta3);
+
                 Z_Stepper.update();
+                arm_motor.update();
                 break;
             case 1:
                 printf("XYZ — x:%.1f y:%.1f z:%.1f\n",
@@ -105,7 +114,9 @@ extern "C" void app_main()
             }
 
             float Base_position = Base_Stepper._encoder.getAccumulatedAngleDeg();
-            snprintf(pub_buf, sizeof(pub_buf), "%.2f", Base_position);
+            float z_Pos = Z_Stepper.getPosition();
+            float arm_position = arm_motor.getPosition();
+            snprintf(pub_buf, sizeof(pub_buf), "%.2f,%.2f,%.2f", Base_position,z_Pos,arm_position);
             mqtt.publish(TOPIC_PUB, pub_buf);
         }
     }
