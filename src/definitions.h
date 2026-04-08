@@ -2,24 +2,24 @@
 #define __DEFINITIONS_H__
 
 // ─── External Libraries ───────────────────────────────────────────
-#include <stdio.h>
-#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 // ─── Project Libraries ────────────────────────────────────────────
-#include "SimpleGPIO.h"
-#include "SimpleTimer.h"
-#include "WifiManager.h"
-#include "MqttManager.h"
-#include "ServoStepper.h"
-#include "Stepper.h"
+#include "DCMotor.h"
 #include "Hbridge.h"
+#include "MqttManager.h"
 #include "QuadratureEncoder.h"
 #include "Robotics.h"
-#include "DCMotor.h"
-#include "Robotics.h"
+#include "ServoStepper.h"
+#include "SimpleGPIO.h"
+#include "SimpleTimer.h"
+#include "Stepper.h"
+#include "WifiManager.h"
 
 // ─── Timing ───────────────────────────────────────────────────────
 float dt = 10000; // us — 10 ms control loop
@@ -37,10 +37,9 @@ uint8_t Z_PWM_PIN = 18;
 uint8_t Z_PWM_CH = 1;
 
 // DC motor arm
-uint8_t DC_PINS[2] = {13,12};
-uint8_t DC_CH [2] = {2,3};
+uint8_t DC_PINS[2] = {13, 12};
+uint8_t DC_CH[2] = {2, 3};
 uint8_t ENC_PINS[2] = {25, 26};
-
 
 // ─── LEDC Timer Configs ───────────────────────────────────────────
 
@@ -71,28 +70,33 @@ Stepper Z_Stepper;
 HBridge DC_Motor;
 QuadratureEncoder Encoder_arm;
 DCMotor arm_motor;
+Robotics robot;
 
 // ─── PID Gains ────────────────────────────────────────────────────
 float base_gains[3] = {8.0f, 1.48f, 0.0f};
 float z_gains[3] = {10.0f, 0.0f, 0.0f};
-float arm_pos_gains[3] = { 3.0f, 0.1f, 0.1f  };   // tune
-float arm_vel_gains[3] = { 2.0f, 0.5f, 0.05f };
-
+float arm_pos_gains[3] = {3.0f, 0.1f, 0.1f}; // tune
+float arm_vel_gains[3] = {2.0f, 0.5f, 0.05f};
 
 // ─── MQTT Command Globals ─────────────────────────────────────────
 int mode = -1;
 float theta1 = 0, theta2 = 0, theta3 = 0, theta4 = 0;
 float cmd_x = 0, cmd_y = 0, cmd_z = 0;
 
+// ─── SCARA Geometry ───────────────────────────────────────────────
+float scara_l1 = 100.0f;
+float scara_l2 = 100.0f;
+
 // ─── Network ──────────────────────────────────────────────────────
-#define WIFI_SSID "WIFI_RAY"
-#define WIFI_PASSWORD "Santi2011"
-#define MQTT_BROKER_URI "mqtt://192.168.80.158:1883"
+#define WIFI_SSID "realme 11 Pro 5G"
+#define WIFI_PASSWORD "z57ek35n"
+#define MQTT_BROKER_URI "mqtt://172.26.31.10:1883"
 #define MQTT_CLIENT_ID "ESP32_Client_01"
 #define TOPIC_PUB "esp32/status"
 #define TOPIC_SUB "esp32/commands"
 
 // ─── Misc ─────────────────────────────────────────────────────────
-char pub_buf[32];
+char pub_buf[96];
+float prev_theta2 = -9999.0f; // arbitrary value
 
 #endif // __DEFINITIONS_H__

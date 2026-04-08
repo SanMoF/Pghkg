@@ -15,11 +15,54 @@ void Robotics::setup(float link1_length, float link2_length)
     L2 = link2_length;
 }
 
-void Robotics::setLinkLengths(float link1, float link2)
+EndEffectorPose Robotics::getEndEffectorPosition(float theta1_deg, float theta2_deg,
+                                                  float z_pos, float theta4_deg)
 {
-    L1 = link1;
-    L2 = link2;
+    // Build DH table from joint angles (degrees -> radians internally)
+    float dh[4][4] = {
+        {theta1_deg * DEG_TO_RAD, 0.0f, L1, 0.0f},
+        {theta2_deg * DEG_TO_RAD, 0.0f, L2, 0.0f},
+        {0.0f, z_pos, 0.0f, 0.0f},
+        {theta4_deg * DEG_TO_RAD, 0.0f, 0.0f, 0.0f}};
+
+    float tf[16] = {};
+    Forward_Kinematics(dh, 4, tf);
+
+    EndEffectorPose pose;
+    pose.x = tf[3];
+    pose.y = tf[7];
+    pose.z = tf[11];
+    return pose;
 }
+
+bool Robotics::solveIK(float target_x, float target_y, float target_z, float target_tool_angle_deg,
+                       float current_theta1_deg, float current_theta2_deg,
+                       float current_z, float current_theta4_deg,
+                       IKSolution &best_solution)
+{
+    IKSolution solutions[2] = {};
+    float tool_angle_rad = target_tool_angle_deg * DEG_TO_RAD;
+
+    int num_solutions = Inverse_Kinematics(target_x, target_y, target_z, tool_angle_rad, solutions);
+
+    if (num_solutions == 0)
+        return false;
+
+    // Build current joints array (in radians for findBestSolution)
+    float current_joints[4] = {
+        current_theta1_deg * DEG_TO_RAD,
+        current_theta2_deg * DEG_TO_RAD,
+        current_z,
+        current_theta4_deg * DEG_TO_RAD};
+
+    float weights[3] = {1.0f, 1.0f, 0.2f};
+    int best_idx = findBestSolution(solutions, num_solutions, current_joints, weights);
+
+    best_solution = solutions[best_idx];
+    return true;
+}
+
+
 
 int Robotics::Inverse_Kinematics(float x, float y, float z, float tool_angle, IKSolution solutions[2])
 {

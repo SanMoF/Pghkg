@@ -63,6 +63,8 @@ extern "C" void app_main()
 {
     esp_task_wdt_deinit();
 
+    robot.setup(scara_l1, scara_l2);
+
     // Timers Setups
     Timer.setup(timerinterrupt, "Main_timer");
     Timer.startPeriodic(dt);
@@ -76,17 +78,12 @@ extern "C" void app_main()
     arm_motor.setup(DC_PINS, DC_CH, ENC_PINS, &DC_TIMER,
                     arm_vel_gains, arm_pos_gains, dt);
     arm_motor.setMode(DCMotorMode::POSITION);
-    // Need to include the Robtoics library for Forward and Inverse Kinematics
-    // Consider code for Inverse kineamtics is already for a scara 4dof
-    
-
     // Wifi and Mqtt setups
     wifi.setup(WIFI_SSID, WIFI_PASSWORD);
     mqtt.setup(MQTT_BROKER_URI, MQTT_CLIENT_ID, TOPIC_SUB);
     mqtt.publish(TOPIC_PUB, "ESP32 online");
 
     xTaskCreate(mqtt_task, "mqtt_task", 4096, NULL, 5, NULL);
-    float prev_theta2 = -9999.0f;
 
     while (1)
     {
@@ -98,25 +95,65 @@ extern "C" void app_main()
 
             case 0:
                 Base_Stepper.goToAngle(theta1);
-                Z_Stepper.goToAngle(theta2, 6000); // fixed base freq, no prev needed
+                Z_Stepper.goToAngle(theta2, 4000); // fixed base freq, no prev needed
                 arm_motor.setTargetPosition(theta3);
 
                 Z_Stepper.update();
                 arm_motor.update();
                 break;
             case 1:
-                printf("XYZ — x:%.1f y:%.1f z:%.1f\n",
-                       cmd_x, cmd_y, cmd_z);
+            {
+                // Get current joint positions from encoders
+                float current_j1 = Base_Stepper._encoder.getAccumulatedAngleDeg();
+                float current_j2 = arm_motor.getPosition();
+                float current_j3 = static_cast<float>(Z_Stepper.getPosition());
+                float current_j4 = theta4;
+
+                // Solve IK for target position
+                IKSolution target_solution;
+                bool reachable = robot.solveIK(cmd_x, cmd_y, cmd_z, current_j4,
+                                                current_j1, current_j2, current_j3, current_j4,
+                                                target_solution);
+
+                if (reachable)
+                {
+                    // Convert to degrees for motor commands
+                    theta1 = target_solution.theta1 * 57.29577951f;
+                    theta3 = target_solution.theta2 * 57.29577951f;
+                    theta2 = target_solution.z;
+                    theta4 = target_solution.theta4 * 57.29577951f;
+
+                    // Apply to motors (same as case 0)
+                    Base_Stepper.goToAngle(theta1);
+                    Z_Stepper.goToAngle(theta2, 4000);
+                    arm_motor.setTargetPosition(theta3);
+
+                    Z_Stepper.update();
+                    arm_motor.update();
+                }
+                else
+                {
+                    printf("IK unreachable for xyz:(%.2f,%.2f,%.2f)\n", cmd_x, cmd_y, cmd_z);
+                }
                 break;
+            }
 
             default:
                 break;
             }
 
-            float Base_position = Base_Stepper._encoder.getAccumulatedAngleDeg();
-            float z_Pos = Z_Stepper.getPosition();
-            float arm_position = arm_motor.getPosition();
-            snprintf(pub_buf, sizeof(pub_buf), "%.2f,%.2f,%.2f", Base_position,z_Pos,arm_position);
+            // Get current joint angles from encoders
+            float j1 = Base_Stepper._encoder.getAccumulatedAngleDeg();
+            float j2 = theta2;
+            float j3 = arm_motor.getPosition();
+            float j4 = theta4;
+
+            // Compute end-effector position via forward kinematics
+            EndEffectorPose pose = robot.getEndEffectorPosition(j1, j3, j2, j4);
+
+            snprintf(pub_buf, sizeof(pub_buf),
+                     "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+                     j1, j2, j3, j4, pose.x, pose.y, pose.z);
             mqtt.publish(TOPIC_PUB, pub_buf);
         }
     }
