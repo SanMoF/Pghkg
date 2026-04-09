@@ -84,7 +84,7 @@ float theta1 = 0, theta2 = 0, theta3 = 0, theta4 = 0;
 float cmd_x = 0, cmd_y = 0, cmd_z = 0;
 
 // ─── SCARA Geometry ───────────────────────────────────────────────
-float scara_l1 = 100.0f;
+float scara_l1 = 150.0f;
 float scara_l2 = 100.0f;
 
 // ─── Network ──────────────────────────────────────────────────────
