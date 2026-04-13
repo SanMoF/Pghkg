@@ -94,19 +94,19 @@ extern "C" void app_main()
                 // local variable before while(1)
 
             case 0:
-                Base_Stepper.goToAngle(theta1);
-                Z_Stepper.goToAngle(theta2, 4000); // fixed base freq, no prev needed
-                arm_motor.setTargetPosition(theta3);
+                Base_Stepper.goToAngle(theta1 * BASE_RATIO);
+                Z_Stepper.goToAngle(theta2 * Z_RATIO, 4000); // fixed base freq, no prev needed
+                arm_motor.setTargetPosition(theta3 * ARM_RATIO);
 
                 Z_Stepper.update();
                 arm_motor.update();
                 break;
             case 1:
             {
-                // Get current joint positions from encoders
-                float current_j1 = Base_Stepper._encoder.getAccumulatedAngleDeg();
-                float current_j2 = arm_motor.getPosition();
-                float current_j3 = static_cast<float>(Z_Stepper.getPosition());
+                // Get current joint positions from encoders (convert motor→joint)
+                float current_j1 = Base_Stepper._encoder.getAccumulatedAngleDeg() / BASE_RATIO;
+                float current_j2 = arm_motor.getPosition() / ARM_RATIO;
+                float current_j3 = static_cast<float>(Z_Stepper.getPosition()) / Z_RATIO;
                 float current_j4 = theta4;
 
                 // Solve IK for target position
@@ -123,10 +123,10 @@ extern "C" void app_main()
                     theta2 = target_solution.z;
                     theta4 = target_solution.theta4 * 57.29577951f;
 
-                    // Apply to motors (same as case 0)
-                    Base_Stepper.goToAngle(theta1);
-                    Z_Stepper.goToAngle(theta2, 4000);
-                    arm_motor.setTargetPosition(theta3);
+                    // Apply to motors (joint→motor)
+                    Base_Stepper.goToAngle(theta1 * BASE_RATIO);
+                    Z_Stepper.goToAngle(theta2 * Z_RATIO, 4000);
+                    arm_motor.setTargetPosition(theta3 * ARM_RATIO);
 
                     Z_Stepper.update();
                     arm_motor.update();
@@ -142,10 +142,10 @@ extern "C" void app_main()
                 break;
             }
 
-            // Get current joint angles from encoders
-            float j1 = Base_Stepper._encoder.getAccumulatedAngleDeg();
-            float j2 = theta2;
-            float j3 = arm_motor.getPosition();
+            // Get current joint angles from encoders (convert motor→joint)
+            float j1 = Base_Stepper._encoder.getAccumulatedAngleDeg() / BASE_RATIO;
+            float j2 = theta2/Z_RATIO; // open-loop: no encoder feedback
+            float j3 = arm_motor.getPosition() / ARM_RATIO;
             float j4 = theta4;
 
             // Compute end-effector position via forward kinematics
