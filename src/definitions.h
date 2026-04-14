@@ -97,7 +97,7 @@ float scara_l2 = 100.0f;
 // ─── Network ──────────────────────────────────────────────────────
 #define WIFI_SSID "realme 11 Pro 5G"
 #define WIFI_PASSWORD "z57ek35n"
-#define MQTT_BROKER_URI "mqtt://172.26.31.10:1883"
+#define MQTT_BROKER_URI "mqtt://10.133.218.10:1883"
 #define MQTT_CLIENT_ID "ESP32_Client_01"
 #define TOPIC_PUB "esp32/status"
 #define TOPIC_SUB "esp32/commands"

@@ -8,6 +8,7 @@ QuadratureEncoder::QuadratureEncoder()
 QuadratureEncoder::~QuadratureEncoder()
 {
     gpio_isr_handler_remove(_gpio_num[0]);
+    gpio_isr_handler_remove(_gpio_num[1]);
 }
 
 void QuadratureEncoder::setup(uint8_t gpio_num[], float degrees_per_edge, int64_t timeout_us)
@@ -16,20 +17,22 @@ void QuadratureEncoder::setup(uint8_t gpio_num[], float degrees_per_edge, int64_
     _gpio_num[1] = (gpio_num_t)gpio_num[1];
     _degrees_per_edge = degrees_per_edge;
     _timeout_us = timeout_us;
+
     gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_ANYEDGE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    io_conf.intr_type    = GPIO_INTR_ANYEDGE;
+    io_conf.mode         = GPIO_MODE_INPUT;
+    io_conf.pull_up_en   = GPIO_PULLUP_ENABLE;
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pin_bit_mask = (1ULL << _gpio_num[0]);
+    // Configure BOTH pins together in one call
+    io_conf.pin_bit_mask = (1ULL << _gpio_num[0]) | (1ULL << _gpio_num[1]);
     gpio_config(&io_conf);
-    //gpio_uninstall_isr_service();
+
     gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+
     gpio_isr_handler_add(_gpio_num[0], [](void *arg)
                          { static_cast<QuadratureEncoder *>(arg)->handler(); }, this);
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.pin_bit_mask = (1ULL << _gpio_num[1]);
-    gpio_config(&io_conf);
+    gpio_isr_handler_add(_gpio_num[1], [](void *arg)
+                         { static_cast<QuadratureEncoder *>(arg)->handler(); }, this);
 }
 
 float QuadratureEncoder::getAngle()
