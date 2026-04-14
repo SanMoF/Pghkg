@@ -28,6 +28,7 @@ public:
     void setMode(DCMotorMode mode);
     void setTargetVelocity(float rpm);
     void setTargetPosition(float degrees);
+    void setPositionDeadband(float degrees);
 
     float getVelocity();
     float getPosition();
@@ -44,6 +45,7 @@ private:
     float _targetPosition;
     float _currentVelocity;
     float _currentPosition;
+    float _posDeadband;
 
     void _applyVelocityControl();
     void _applyPositionControl();

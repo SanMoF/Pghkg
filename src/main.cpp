@@ -148,13 +148,19 @@ extern "C" void app_main()
             float j3 = arm_motor.getPosition() / ARM_RATIO;
             float j4 = theta4;
 
-            // Compute end-effector position via forward kinematics
-            EndEffectorPose pose = robot.getEndEffectorPosition(j1, j3, j2, j4);
+            // Publish at 10 Hz (every 10 ticks × 10 ms = 100 ms)
+            if (++pub_tick >= 10)
+            {
+                pub_tick = 0;
 
-            snprintf(pub_buf, sizeof(pub_buf),
-                     "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
-                     j1, j2, j3, j4, pose.x, pose.y, pose.z);
-            mqtt.publish(TOPIC_PUB, pub_buf);
+                // Compute end-effector position via forward kinematics
+                EndEffectorPose pose = robot.getEndEffectorPosition(j1, j3, j2, j4);
+
+                snprintf(pub_buf, sizeof(pub_buf),
+                         "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+                         j1, j2, j3, j4, pose.x, pose.y, pose.z);
+                mqtt.publish(TOPIC_PUB, pub_buf);
+            }
         }
     }
 }

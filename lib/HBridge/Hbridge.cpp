@@ -18,10 +18,14 @@ void HBridge::setSpeed(float speed)
         PWM_CLKW.setDuty(speed);
         PWM_CCLKW.setDuty(0.0f);
     }
-    else
+    else if (speed < 0.0f)
     {
         PWM_CLKW.setDuty(0.0f);
         PWM_CCLKW.setDuty(-speed);
+    }
+    else
+    {
+        setStop();
     }
 }
 

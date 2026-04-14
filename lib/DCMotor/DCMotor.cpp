@@ -6,7 +6,8 @@ DCMotor::DCMotor()
       _targetVelocity(0.0f),
       _targetPosition(0.0f),
       _currentVelocity(0.0f),
-      _currentPosition(0.0f)
+      _currentPosition(0.0f),
+      _posDeadband(1.5f)        // degrees — stop driving when error < 1.5°
 {}
 
 void DCMotor::setup(uint8_t motorPins[2],
@@ -56,8 +57,9 @@ void DCMotor::setTargetPosition(float degrees)
     _posPid.reset();
 }
 
-float DCMotor::getVelocity()  { return _currentVelocity; }
-float DCMotor::getPosition()  { return _currentPosition; }
+float DCMotor::getVelocity()          { return _encoder.getSpeed(); }
+float DCMotor::getPosition()          { return _encoder.getAngle(); }
+void  DCMotor::setPositionDeadband(float degrees) { _posDeadband = degrees; }
 
 // ─── update() — call every timer tick ────────────────────────────
 
@@ -88,6 +90,13 @@ void DCMotor::_applyVelocityControl()
 void DCMotor::_applyPositionControl()
 {
     float error = _targetPosition - _currentPosition;
+
+    if (error < _posDeadband && error > -_posDeadband) {
+        _motor.setStop();
+        _posPid.reset();
+        return;
+    }
+
     float u = _posPid.computedU(error);
 
     if (u >  100.0f) u =  100.0f;

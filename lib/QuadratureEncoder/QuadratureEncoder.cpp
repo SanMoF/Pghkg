@@ -29,9 +29,9 @@ void QuadratureEncoder::setup(uint8_t gpio_num[], float degrees_per_edge, int64_
 
     gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
 
-    gpio_isr_handler_add(_gpio_num[0], [](void *arg)
+    gpio_isr_handler_add(_gpio_num[0], [](void *arg) IRAM_ATTR
                          { static_cast<QuadratureEncoder *>(arg)->handler(); }, this);
-    gpio_isr_handler_add(_gpio_num[1], [](void *arg)
+    gpio_isr_handler_add(_gpio_num[1], [](void *arg) IRAM_ATTR
                          { static_cast<QuadratureEncoder *>(arg)->handler(); }, this);
 }
 
@@ -60,7 +60,7 @@ void QuadratureEncoder::setAngle(float angle)
     _counts = angle / _degrees_per_edge;
 }
 
-void QuadratureEncoder::handler()
+void IRAM_ATTR QuadratureEncoder::handler()
 {
     int64_t current_micros = esp_timer_get_time();
     _delta_micros = current_micros - _prev_micros;

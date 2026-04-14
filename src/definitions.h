@@ -105,6 +105,7 @@ float scara_l2 = 100.0f;
 // ─── Misc ─────────────────────────────────────────────────────────
 char pub_buf[96];
 float prev_theta2 = -9999.0f; // arbitrary value
+int pub_tick = 0;
 
 
 #endif // __DEFINITIONS_H__
