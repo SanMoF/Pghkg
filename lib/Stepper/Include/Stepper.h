@@ -30,7 +30,7 @@ public:
     int32_t getPosition() const;
     bool isMoving() const { return _is_moving; }
     void forceStop();
-    void resetPosition(); // zero step counter after homing
+    void resetPosition(int32_t steps = 0); // set step counter after homing
 
     void setPIDGains(float kp, float ki, float kd);
     void resetPID();

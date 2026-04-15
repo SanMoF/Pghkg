@@ -95,15 +95,18 @@ extern "C" void app_main()
             {
                 if (Z_LimitSwitch.get() == 0)   // active-low: switch closed = home reached
                 {
+                    // Convert 190 mm → steps using same mapping as j2 readout:
+                    //   j2 = steps * (360 / 1600) / Z_RATIO  →  steps = mm * 1600 * Z_RATIO / 360
+                    int32_t home_steps = (int32_t)(Z_HOME_MM * 1600.0f * Z_RATIO / 360.0f);
                     Z_Stepper.forceStop();
-                    Z_Stepper.resetPosition();   // define this point as position 0
+                    Z_Stepper.resetPosition(home_steps);  // define this point as 190 mm
                     z_homing = false;
                     mqtt.publish(TOPIC_PUB, "Z:homed");
-                    printf("Z homing complete — position zeroed\n");
+                    printf("Z homing complete — position set to %.0f mm\n", Z_HOME_MM);
                 }
                 else
                 {
-                    Z_Stepper.update();          // keep stepping toward large-negative target
+                    Z_Stepper.update();          // keep stepping toward large-positive target
                 }
             }
 
@@ -158,9 +161,9 @@ extern "C" void app_main()
 
             case 2:  // trigger Z homing
                 z_homing = true;
-                // Command a large negative target so the motor moves UP continuously;
-                // the homing block above will forceStop + reset when the switch fires.
-                Z_Stepper.goToAngle(-99999.0f * Z_RATIO, 2000);
+                // Positive = down; command a large positive target so the motor
+                // moves DOWN continuously until the limit switch fires.
+                Z_Stepper.goToAngle(99999.0f * Z_RATIO, 2000);
                 mode = -1;   // consume the command
                 break;
 

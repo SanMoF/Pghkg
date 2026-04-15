@@ -42,7 +42,8 @@ uint8_t DC_CH[2] = {2, 3};
 uint8_t ENC_PINS[2] = {25, 26};
 
 // Z-axis limit switch (active-low, internal pull-up)
-#define Z_LIMIT_PIN GPIO_NUM_27
+#define Z_LIMIT_PIN  GPIO_NUM_27
+#define Z_HOME_MM    190.0f   // physical position when limit switch fires (mm)
 
 // ─── LEDC Timer Configs ───────────────────────────────────────────
 
