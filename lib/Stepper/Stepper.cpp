@@ -139,10 +139,10 @@ void Stepper::forceStop()
     _pid.reset();
 }
 
-void Stepper::resetPosition(int32_t steps)
+void Stepper::resetPosition()
 {
-    _calculated_position = steps;
-    _target_position     = steps;
+    _calculated_position = 0;
+    _target_position     = 0;
 }
 
 void Stepper::setPIDGains(float kp, float ki, float kd)

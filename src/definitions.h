@@ -88,12 +88,15 @@ int mode = -1;
 float theta1 = 0, theta2 = 0, theta3 = 0, theta4 = 0;
 float cmd_x = 0, cmd_y = 0, cmd_z = 0;
 
-// ─── Transmission Ratios (motor_rev / joint_rev) ─────────────────
-// motor_angle = joint_angle * RATIO
-// joint_angle = motor_angle / RATIO
-float BASE_RATIO = 1.0f;  // 1.0 = direct drive (no gear)
-float Z_RATIO    = 1.0f;
-float ARM_RATIO  = 1.0f;
+// ─── Transmission Ratios ─────────────────────────────────────────
+// BASE / ARM: motor_deg = joint_deg * RATIO  |  joint_deg = motor_deg / RATIO
+//   Base:  360 motor° = 90 joint°  →  RATIO = 4.0
+//   Arm:   560 motor° = 90 joint°  →  RATIO = 560/90
+// Z (linear): motor_deg = mm * RATIO  |  mm = motor_deg / RATIO
+//   Z:    1000 motor° = 22 mm       →  RATIO = 1000/22
+float BASE_RATIO = 4.0f;
+float Z_RATIO    = 1000.0f / 22.0f;   // ≈ 45.45  (motor° per mm)
+float ARM_RATIO  = 560.0f / 90.0f;    // ≈ 6.22   (motor° per joint°)
 
 // ─── SCARA Geometry ───────────────────────────────────────────────
 float scara_l1 = 150.0f;
