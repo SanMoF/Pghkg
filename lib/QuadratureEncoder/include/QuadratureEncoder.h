@@ -25,7 +25,7 @@ private:
     volatile int64_t _prev_micros, _delta_micros;
     volatile uint8_t _states;
     volatile int8_t _direction;
-    const int8_t _edge_lut[16] = {0, 0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0};
+    const int8_t _edge_lut[16] = {0, 1, -1, 0, -1, 0, 0, 1, 1, 0, 0, -1, 0, -1, 1, 0};
 };
 
 #endif // __QUADRATUREENCODER_H__
