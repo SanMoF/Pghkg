@@ -75,6 +75,7 @@ extern "C" void app_main()
     Z_Stepper.setup(Z_DIR_PIN, Z_PWM_PIN, Z_PWM_CH,
                     &STEPPER_TIMER_1, /*steps_per_rev=*/1600,
                     z_gains[0], z_gains[1], z_gains[2], (uint32_t)dt);
+    Z_LimitSwitch.setup(Z_LIMIT_PIN, GPI, GPIO_PULLUP_ONLY);
     arm_motor.setup(DC_PINS, DC_CH, ENC_PINS, &DC_TIMER,
                     arm_vel_gains, arm_pos_gains, dt);
     arm_motor.setMode(DCMotorMode::POSITION);
@@ -89,6 +90,23 @@ extern "C" void app_main()
     {
         if (Timer.interruptAvailable())
         {
+            // Z homing: active every tick while z_homing is true
+            if (z_homing)
+            {
+                if (Z_LimitSwitch.get() == 0)   // active-low: switch closed = home reached
+                {
+                    Z_Stepper.forceStop();
+                    Z_Stepper.resetPosition();   // define this point as position 0
+                    z_homing = false;
+                    mqtt.publish(TOPIC_PUB, "Z:homed");
+                    printf("Z homing complete — position zeroed\n");
+                }
+                else
+                {
+                    Z_Stepper.update();          // keep stepping toward large-negative target
+                }
+            }
+
             switch (mode)
             {
                 // local variable before while(1)
@@ -138,13 +156,21 @@ extern "C" void app_main()
                 break;
             }
 
+            case 2:  // trigger Z homing
+                z_homing = true;
+                // Command a large negative target so the motor moves UP continuously;
+                // the homing block above will forceStop + reset when the switch fires.
+                Z_Stepper.goToAngle(-99999.0f * Z_RATIO, 2000);
+                mode = -1;   // consume the command
+                break;
+
             default:
                 break;
             }
 
             // Get current joint angles from encoders (convert motor→joint)
             float j1 = Base_Stepper._encoder.getAccumulatedAngleDeg() / BASE_RATIO;
-            float j2 = theta2/Z_RATIO; // open-loop: no encoder feedback
+            float j2 = (Z_Stepper.getPosition() * 360.0f / 1600.0f) / Z_RATIO;
             float j3 = arm_motor.getPosition() / ARM_RATIO;
             float j4 = theta4;
 

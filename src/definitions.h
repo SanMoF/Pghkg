@@ -41,6 +41,9 @@ uint8_t DC_PINS[2] = {13, 12};
 uint8_t DC_CH[2] = {2, 3};
 uint8_t ENC_PINS[2] = {25, 26};
 
+// Z-axis limit switch (active-low, internal pull-up)
+#define Z_LIMIT_PIN GPIO_NUM_27
+
 // ─── LEDC Timer Configs ───────────────────────────────────────────
 
 static TimerConfig STEPPER_TIMER_0{// Base stepper
@@ -71,6 +74,7 @@ HBridge DC_Motor;
 QuadratureEncoder Encoder_arm;
 DCMotor arm_motor;
 Robotics robot;
+SimpleGPIO Z_LimitSwitch;
 
 // ─── PID Gains ────────────────────────────────────────────────────
 float base_gains[3] = {8.0f, 1.48f, 0.0f};
@@ -106,6 +110,7 @@ float scara_l2 = 100.0f;
 char pub_buf[96];
 float prev_theta2 = -9999.0f; // arbitrary value
 int pub_tick = 0;
+bool z_homing = false;
 
 
 #endif // __DEFINITIONS_H__
