@@ -79,6 +79,9 @@ extern "C" void app_main()
     arm_motor.setup(DC_PINS, DC_CH, ENC_PINS, &DC_TIMER,
                     arm_vel_gains, arm_pos_gains, dt);
     arm_motor.setMode(DCMotorMode::POSITION);
+    wrist_motor.setup(WRIST_DC_PINS, WRIST_DC_CH, WRIST_ENC_PINS, &DC_TIMER,
+                      wrist_vel_gains, wrist_pos_gains, dt);
+    wrist_motor.setMode(DCMotorMode::POSITION);
     // Wifi and Mqtt setups
     wifi.setup(WIFI_SSID, WIFI_PASSWORD);
     mqtt.setup(MQTT_BROKER_URI, MQTT_CLIENT_ID, TOPIC_SUB);
@@ -113,11 +116,13 @@ extern "C" void app_main()
 
             case 0:
                 Base_Stepper.goToAngle(theta1 * BASE_RATIO);
-                Z_Stepper.goToAngle(theta2 * Z_RATIO, 4000); // fixed base freq, no prev needed
+                Z_Stepper.goToAngle(theta2 * Z_RATIO, 4000);
                 arm_motor.setTargetPosition(theta3 * ARM_RATIO);
+                wrist_motor.setTargetPosition(theta4 * WRIST_RATIO);
 
                 Z_Stepper.update();
                 arm_motor.update();
+                wrist_motor.update();
                 break;
             case 1:
             {
@@ -145,9 +150,11 @@ extern "C" void app_main()
                     Base_Stepper.goToAngle(theta1 * BASE_RATIO);
                     Z_Stepper.goToAngle(theta2 * Z_RATIO, 4000);
                     arm_motor.setTargetPosition(theta3 * ARM_RATIO);
+                    wrist_motor.setTargetPosition(theta4 * WRIST_RATIO);
 
                     Z_Stepper.update();
                     arm_motor.update();
+                    wrist_motor.update();
                 }
                 else
                 {
@@ -172,7 +179,7 @@ extern "C" void app_main()
             float j1 = Base_Stepper._encoder.getAccumulatedAngleDeg() / BASE_RATIO;
             float j2 = (Z_Stepper.getPosition() * 360.0f / 1600.0f) / Z_RATIO;
             float j3 = arm_motor.getPosition() / ARM_RATIO;
-            float j4 = theta4;
+            float j4 = wrist_motor.getPosition() / WRIST_RATIO;
 
             // Publish at 10 Hz (every 10 ticks × 10 ms = 100 ms)
             if (++pub_tick >= 10)

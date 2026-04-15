@@ -36,10 +36,15 @@ uint8_t Z_DIR_PIN = 19;
 uint8_t Z_PWM_PIN = 18;
 uint8_t Z_PWM_CH = 1;
 
-// DC motor arm
+// DC motor — arm
 uint8_t DC_PINS[2] = {13, 12};
 uint8_t DC_CH[2] = {2, 3};
 uint8_t ENC_PINS[2] = {25, 26};
+
+// DC motor — wrist
+uint8_t WRIST_DC_PINS[2] = {14, 15};
+uint8_t WRIST_DC_CH[2]   = {4, 5};
+uint8_t WRIST_ENC_PINS[2] = {32, 33};
 
 // Z-axis limit switch (active-low, internal pull-up)
 #define Z_LIMIT_PIN  GPIO_NUM_27
@@ -74,14 +79,17 @@ Stepper Z_Stepper;
 HBridge DC_Motor;
 QuadratureEncoder Encoder_arm;
 DCMotor arm_motor;
+DCMotor wrist_motor;
 Robotics robot;
 SimpleGPIO Z_LimitSwitch;
 
 // ─── PID Gains ────────────────────────────────────────────────────
 float base_gains[3] = {8.0f, 1.48f, 0.0f};
 float z_gains[3] = {10.0f, 0.0f, 0.0f};
-float arm_pos_gains[3] = {3.0f, 0.1f, 0.1f}; // tune
-float arm_vel_gains[3] = {2.0f, 0.5f, 0.05f};
+float arm_pos_gains[3]   = {3.0f, 0.1f, 0.1f};
+float arm_vel_gains[3]   = {2.0f, 0.5f, 0.05f};
+float wrist_pos_gains[3] = {3.0f, 0.1f, 0.1f}; // tune — same starting point as arm
+float wrist_vel_gains[3] = {2.0f, 0.5f, 0.05f};
 
 // ─── MQTT Command Globals ─────────────────────────────────────────
 int mode = -1;
@@ -89,14 +97,11 @@ float theta1 = 0, theta2 = 0, theta3 = 0, theta4 = 0;
 float cmd_x = 0, cmd_y = 0, cmd_z = 0;
 
 // ─── Transmission Ratios ─────────────────────────────────────────
-// BASE / ARM: motor_deg = joint_deg * RATIO  |  joint_deg = motor_deg / RATIO
-//   Base:  360 motor° = 90 joint°  →  RATIO = 4.0
-//   Arm:   560 motor° = 90 joint°  →  RATIO = 560/90
-// Z (linear): motor_deg = mm * RATIO  |  mm = motor_deg / RATIO
-//   Z:    1000 motor° = 22 mm       →  RATIO = 1000/22
-float BASE_RATIO = 4.0f;
-float Z_RATIO    = 1000.0f / 22.0f;   // ≈ 45.45  (motor° per mm)
-float ARM_RATIO  = 560.0f / 90.0f;    // ≈ 6.22   (motor° per joint°)
+
+float BASE_RATIO  = 4.0f;
+float Z_RATIO     = 1000.0f / 22.0f;   
+float ARM_RATIO   = 560.0f / 90.0f;   
+float WRIST_RATIO = 560.0f / 90.0f; 
 
 // ─── SCARA Geometry ───────────────────────────────────────────────
 float scara_l1 = 150.0f;
