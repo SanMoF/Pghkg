@@ -82,6 +82,7 @@ extern "C" void app_main()
     wrist_motor.setup(WRIST_DC_PINS, WRIST_DC_CH, WRIST_ENC_PINS, &DC_TIMER,
                       wrist_vel_gains, wrist_pos_gains, dt);
     wrist_motor.setMode(DCMotorMode::POSITION);
+    Servo.setup(Servo_Pin,Servo_CH, &Servo_TIMER);
     // Wifi and Mqtt setups
     wifi.setup(WIFI_SSID, WIFI_PASSWORD);
     mqtt.setup(MQTT_BROKER_URI, MQTT_CLIENT_ID, TOPIC_SUB);
