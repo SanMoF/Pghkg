@@ -29,6 +29,7 @@ public:
     void setTargetVelocity(float rpm);
     void setTargetPosition(float degrees);
     void setPositionDeadband(float degrees);
+    void zeroPosition();
 
     float getVelocity();
     float getPosition();

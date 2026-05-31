@@ -28,6 +28,7 @@ public:
     void update(); // call every timer tick
 
     int32_t getPosition() const;
+    uint32_t stepsPerRev() const { return _steps_per_revolution; }
     bool isMoving() const { return _is_moving; }
     void forceStop();
     void resetPosition(); // zero step counter after homing

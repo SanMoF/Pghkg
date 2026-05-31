@@ -61,6 +61,15 @@ float DCMotor::getVelocity()          { return _encoder.getSpeed(); }
 float DCMotor::getPosition()          { return _encoder.getAngle(); }
 void  DCMotor::setPositionDeadband(float degrees) { _posDeadband = degrees; }
 
+void DCMotor::zeroPosition()
+{
+    _encoder.setAngle(0.0f);
+    _targetPosition = 0.0f;
+    _velPid.reset();
+    _posPid.reset();
+    _motor.setSpeed(0.0f);
+}
+
 // ─── update() — call every timer tick ────────────────────────────
 
 void DCMotor::update()
