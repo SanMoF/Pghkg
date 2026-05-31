@@ -32,8 +32,8 @@ uint8_t BASE_PWM_PIN = 5;
 uint8_t BASE_PWM_CH = 0;
 
 // Z axis stepper (open loop)
-uint8_t Z_DIR_PIN = 18;
-uint8_t Z_PWM_PIN = 19;
+uint8_t Z_DIR_PIN = 19;
+uint8_t Z_PWM_PIN = 18;
 uint8_t Z_PWM_CH = 1;
 
 // DC motor — arm
@@ -121,7 +121,7 @@ float scara_l2 = 100.0f;
 // ─── Network ──────────────────────────────────────────────────────
 #define WIFI_SSID "realme 11 Pro 5G"
 #define WIFI_PASSWORD "z57ek35n"
-#define MQTT_BROKER_URI "mqtt://10.133.218.10:1883"
+#define MQTT_BROKER_URI "mqtt://10.195.83.10:1883"
 #define MQTT_CLIENT_ID "ESP32_Client_01"
 #define TOPIC_PUB "esp32/status"
 #define TOPIC_SUB "esp32/commands"
