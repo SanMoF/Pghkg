@@ -48,7 +48,6 @@ uint8_t WRIST_ENC_PINS[2] = {32, 33};
 
 // Z-axis limit switch (active-low, internal pull-up)
 #define Z_LIMIT_PIN  GPIO_NUM_27
-#define Z_HOME_MM    190.0f   // physical Z position when limit switch fires
 
 // Servo for gripper
 uint8_t Servo_Pin = 16;
@@ -76,7 +75,7 @@ static TimerConfig DC_TIMER{// DC motors (shared)
 static TimerConfig Servo_TIMER{// Gripper servo
                                .timer          = LEDC_TIMER_3,
                                .frequency      = 50,
-                               .bit_resolution = LEDC_TIMER_8_BIT,
+                               .bit_resolution = LEDC_TIMER_10_BIT,
                                .mode           = LEDC_HIGH_SPEED_MODE};
 
 // ─── Peripheral Objects ───────────────────────────────────────────
@@ -107,11 +106,21 @@ float wrist_vel_gains[3] = {2.0f, 0.5f, 0.05f};
 float BASE_RATIO  = 4.0f;              // motor° per base joint°
 float Z_RATIO     = 1000.0f / 22.0f;   // motor° per mm of Z travel (leadscrew)
 float ARM_RATIO   = 560.0f / 90.0f;    // motor° per elbow joint°
-float WRIST_RATIO = 560.0f / 90.0f;    // motor° per wrist joint°
+// Wrist motor is geared/wired in the opposite rotational sense, so a positive
+// joint angle (IK convention) drives the motor negative. The sign keeps both
+// the command (joint→motor) and feedback (motor→joint) conversions consistent.
+float WRIST_RATIO = -560.0f / 90.0f;   // motor° per wrist joint° (inverted)
 
 // SCARA link lengths (mm) — workspace: |L1-L2| ≤ p ≤ L1+L2
 float scara_l1 = 150.0f;
 float scara_l2 = 100.0f;
+
+// Vertical (Z) geometry — see Robotics.h for the full model.
+//   ARM_PLANE_HOME : arm-plane height when Z is homed (top limit)
+//   TCP_Z_DROP     : fixed vertical drop from the wrist down to the TCP
+//   home TCP height = ARM_PLANE_HOME - TCP_Z_DROP = 340 - 130 = 210 mm
+float ARM_PLANE_HOME = 190.0f;
+float TCP_Z_DROP     = 130.0f;
 
 // ─── MQTT Protocol ────────────────────────────────────────────────
 //
@@ -134,6 +143,8 @@ float cmd_x        = 150.0f;
 float cmd_y        = 0.0f;
 float cmd_z        = 0.0f;
 float cmd_tool_deg = 0.0f;
+float cmd_servo_pwm = 0.0f;   // duty cycle del servo (0–100 por ejemplo)
+
 
 // IK cache — NaN forces a solve on first entry
 float last_cmd_x    = NAN;

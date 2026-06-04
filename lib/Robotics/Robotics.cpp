@@ -9,21 +9,29 @@ Robotics::~Robotics()
 {
 }
 
-void Robotics::setup(float link1_length, float link2_length)
+void Robotics::setup(float link1_length, float link2_length,
+                     float z_arm_plane_home, float tcp_z_drop)
 {
     L1 = link1_length;
     L2 = link2_length;
+    Z_arm_plane_home = z_arm_plane_home;
+    tcp_drop         = tcp_z_drop;
 }
 
 EndEffectorPose Robotics::getEndEffectorPosition(float theta1_deg, float theta2_deg,
-                                                  float z_pos, float theta4_deg)
+                                                  float z_travel, float theta4_deg)
 {
-    // Build DH table from joint angles (degrees -> radians internally)
+    // DH params per row: [theta, d, a, alpha]. All alpha = 0 (planar SCARA);
+    // the vertical chain lives entirely in the d terms:
+    //   joint 3 prismatic: d = arm-plane height = (home - travel), +up
+    //   joint 4 wrist:     d = -tcp_drop        (fixed downward tool offset)
+    // so tf[11] (= sum of d) = (Z_arm_plane_home - z_travel) - tcp_drop,
+    // i.e. the absolute TCP height above the base.
     float dh[4][4] = {
         {theta1_deg * DEG_TO_RAD, 0.0f, L1, 0.0f},
         {theta2_deg * DEG_TO_RAD, 0.0f, L2, 0.0f},
-        {0.0f, z_pos, 0.0f, 0.0f},
-        {theta4_deg * DEG_TO_RAD, 0.0f, 0.0f, 0.0f}};
+        {0.0f, Z_arm_plane_home - z_travel, 0.0f, 0.0f},
+        {theta4_deg * DEG_TO_RAD, -tcp_drop, 0.0f, 0.0f}};
 
     float tf[16] = {};
     Forward_Kinematics(dh, 4, tf);
@@ -88,10 +96,18 @@ int Robotics::Inverse_Kinematics(float x, float y, float z, float tool_angle, IK
     float alpha = acosf(cos_alpha);
     float beta  = acosf(cos_beta);
 
+    // z is the target absolute TCP height above the base. Convert it to
+    // leadscrew travel (what the motor tracks): height = home_tcp - travel,
+    // so travel = home_tcp - height. Clamp at 0 so we never command the
+    // carriage above the home/limit stop.
+    float z_travel = getHomeTcpHeight() - z;
+    if (z_travel < 0.0f)
+        z_travel = 0.0f;
+
     // Solution 1: elbow-down
     solutions[0].theta1 = gamma - alpha;
     solutions[0].theta2 = M_PI - beta;
-    solutions[0].z      = z;
+    solutions[0].z      = z_travel;
     solutions[0].theta4 = tool_angle - solutions[0].theta1 - solutions[0].theta2;
 
     // Singular check: boundary of workspace → only one solution
@@ -101,7 +117,7 @@ int Robotics::Inverse_Kinematics(float x, float y, float z, float tool_angle, IK
     // Solution 2: elbow-up
     solutions[1].theta1 = gamma + alpha;
     solutions[1].theta2 = beta - M_PI;
-    solutions[1].z      = z;
+    solutions[1].z      = z_travel;
     solutions[1].theta4 = tool_angle - solutions[1].theta1 - solutions[1].theta2;
 
     return 2;

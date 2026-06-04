@@ -7,7 +7,7 @@ struct IKSolution
 {
     float theta1; // radians
     float theta2; // radians
-    float z;      // linear, same units as link lengths
+    float z;      // leadscrew travel (mm) from the homed top position, +down
     float theta4; // radians
 };
 
@@ -25,6 +25,20 @@ private:
     float L2 = 100.0f; // Link 2 length (mm)
     float dh_table[4][4]; // Internal DH parameter storage
 
+    // ── Vertical geometry (Z chain) ───────────────────────────────────
+    // The two rotary links sweep a horizontal "arm plane". A leadscrew
+    // raises/lowers the tool; its travel is measured 0 at the homed TOP
+    // position and grows positive as the tool moves DOWN. The TCP hangs a
+    // fixed distance below the arm plane (the tool drop).
+    //
+    //   TCP_height = (arm_plane_home - travel) - tcp_drop
+    //              = home_tcp_height - travel
+    //
+    // With arm_plane_home = 340 mm and tcp_drop = 130 mm the homed TCP sits
+    // at 210 mm, matching the measured home height without a tool.
+    float Z_arm_plane_home = 340.0f; // arm-plane height (mm) when Z is homed
+    float tcp_drop         = 130.0f; // fixed vertical wrist->TCP drop (mm)
+
     static constexpr float DEG_TO_RAD = 0.01745329252f;
     static constexpr float RAD_TO_DEG = 57.29577951f;
 
@@ -32,14 +46,23 @@ public:
     Robotics();
     ~Robotics();
 
-    void setup(float link1_length, float link2_length);
+    void setup(float link1_length, float link2_length,
+               float z_arm_plane_home = 340.0f, float tcp_z_drop = 130.0f);
     void setLinkLengths(float link1, float link2);
+    void setZGeometry(float z_arm_plane_home, float tcp_z_drop)
+    {
+        Z_arm_plane_home = z_arm_plane_home;
+        tcp_drop         = tcp_z_drop;
+    }
     float getLink1Length() const { return L1; }
     float getLink2Length() const { return L2; }
+    float getHomeTcpHeight() const { return Z_arm_plane_home - tcp_drop; }
 
-    // Forward kinematics from joint angles (degrees) -> end-effector position
+    // Forward kinematics from joint state -> end-effector pose.
+    // z_travel is leadscrew travel (mm) from the homed top position (+down);
+    // the returned pose.z is the absolute TCP height above the base.
     EndEffectorPose getEndEffectorPosition(float theta1_deg, float theta2_deg,
-                                           float z_pos, float theta4_deg);
+                                           float z_travel, float theta4_deg);
 
     // Solve IK and return best solution for given target and current state
     // Returns true if solution found, false if unreachable

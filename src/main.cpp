@@ -28,17 +28,39 @@ static void mqtt_task(void *pvParameters)
 
             if (mode == 0)
             {
-                token = strtok(nullptr, ","); if (token) cmd_base_deg  = atof(token);
-                token = strtok(nullptr, ","); if (token) cmd_z_mm      = atof(token);
-                token = strtok(nullptr, ","); if (token) cmd_elbow_deg = atof(token);
-                token = strtok(nullptr, ","); if (token) cmd_wrist_deg = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_base_deg = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_z_mm = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_elbow_deg = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_wrist_deg = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_servo_pwm = atof(token); // ← nuevo
             }
             else if (mode == 1)
             {
-                token = strtok(nullptr, ","); if (token) cmd_x        = atof(token);
-                token = strtok(nullptr, ","); if (token) cmd_y        = atof(token);
-                token = strtok(nullptr, ","); if (token) cmd_z        = atof(token);
-                token = strtok(nullptr, ","); if (token) cmd_tool_deg = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_x = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_y = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_z = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_tool_deg = atof(token);
+                token = strtok(nullptr, ",");
+                if (token)
+                    cmd_servo_pwm = atof(token); // ← nuevo
             }
         }
 
@@ -50,7 +72,7 @@ extern "C" void app_main()
 {
     esp_task_wdt_deinit();
 
-    robot.setup(scara_l1, scara_l2);
+    robot.setup(scara_l1, scara_l2, ARM_PLANE_HOME, TCP_Z_DROP);
 
     Timer.setup(timerinterrupt, "Main_timer");
     Timer.startPeriodic(dt);
@@ -73,6 +95,7 @@ extern "C" void app_main()
     wrist_motor.setMode(DCMotorMode::POSITION);
 
     Servo.setup(Servo_Pin, Servo_CH, &Servo_TIMER);
+    
 
     wifi.setup(WIFI_SSID, WIFI_PASSWORD);
     mqtt.setup(MQTT_BROKER_URI, MQTT_CLIENT_ID, TOPIC_SUB);
@@ -91,8 +114,8 @@ extern "C" void app_main()
                 {
                     Z_Stepper.forceStop();
                     Z_Stepper.resetPosition();
-                    target_z_mm = 0.0f;          // hold at home
-                    z_homing    = false;
+                    target_z_mm = 0.0f; // hold at home
+                    z_homing = false;
                     mqtt.publish(TOPIC_PUB, "Z:homed");
                     printf("Z homing complete — position zeroed\n");
                 }
@@ -106,11 +129,12 @@ extern "C" void app_main()
             switch (mode)
             {
             case 0:
-                target_base_deg  = cmd_base_deg;
-                target_z_mm      = cmd_z_mm;
+                target_base_deg = cmd_base_deg;
+                target_z_mm = cmd_z_mm;
                 target_elbow_deg = cmd_elbow_deg;
                 target_wrist_deg = cmd_wrist_deg;
-                motors_active    = true;
+                
+                motors_active = true;
                 break;
 
             case 1:
@@ -124,10 +148,11 @@ extern "C" void app_main()
 
                 if (prev_mode != 1 || cmd_changed)
                 {
-                    float cur_base  = Base_Stepper._encoder.getAccumulatedAngleDeg() / BASE_RATIO;
+                    float cur_base = Base_Stepper._encoder.getAccumulatedAngleDeg() / BASE_RATIO;
                     float cur_elbow = arm_motor.getPosition() / ARM_RATIO;
-                    float cur_z_mm  = (Z_Stepper.getPosition() * 360.0f /
-                                       (float)Z_Stepper.stepsPerRev()) / Z_RATIO;
+                    float cur_z_mm = (Z_Stepper.getPosition() * 360.0f /
+                                      (float)Z_Stepper.stepsPerRev()) /
+                                     Z_RATIO;
                     float cur_wrist = wrist_motor.getPosition() / WRIST_RATIO;
 
                     IKSolution sol;
@@ -136,14 +161,14 @@ extern "C" void app_main()
                                                    sol);
                     if (reachable)
                     {
-                        target_base_deg  = sol.theta1 * 57.29577951f;
+                        target_base_deg = sol.theta1 * 57.29577951f;
                         target_elbow_deg = sol.theta2 * 57.29577951f;
-                        target_z_mm      = sol.z;
+                        target_z_mm = sol.z;
                         target_wrist_deg = sol.theta4 * 57.29577951f;
 
-                        last_cmd_x    = cmd_x;
-                        last_cmd_y    = cmd_y;
-                        last_cmd_z    = cmd_z;
+                        last_cmd_x = cmd_x;
+                        last_cmd_y = cmd_y;
+                        last_cmd_z = cmd_z;
                         last_cmd_tool = cmd_tool_deg;
                         motors_active = true;
                     }
@@ -155,17 +180,17 @@ extern "C" void app_main()
                 break;
             }
 
-            case 2:  // trigger Z homing
+            case 2: // trigger Z homing
                 z_homing = true;
                 Z_Stepper.goToAngle(-99999.0f * Z_RATIO, 2000);
                 mode = -1;
                 break;
 
-            case 3:  // declare current pose as zero for base/elbow/wrist
+            case 3: // declare current pose as zero for base/elbow/wrist
                 Base_Stepper._encoder.resetAccumulatedAngle();
                 arm_motor.zeroPosition();
                 wrist_motor.zeroPosition();
-                target_base_deg  = 0.0f;
+                target_base_deg = 0.0f;
                 target_elbow_deg = 0.0f;
                 target_wrist_deg = 0.0f;
                 last_cmd_x = last_cmd_y = last_cmd_z = last_cmd_tool = NAN;
@@ -188,8 +213,9 @@ extern "C" void app_main()
                 wrist_motor.setTargetPosition(target_wrist_deg * WRIST_RATIO);
                 arm_motor.update();
                 wrist_motor.update();
+                    Servo.setDuty(cmd_servo_pwm);   // ← nuevo, ajusta el nombre al método real de tu clase
 
-                if (!z_homing)   // homing block already drives Z
+                if (!z_homing) // homing block already drives Z
                 {
                     Z_Stepper.goToAngle(target_z_mm * Z_RATIO, 4000);
                     Z_Stepper.update();
@@ -201,9 +227,10 @@ extern "C" void app_main()
             {
                 pub_tick = 0;
 
-                float base_deg  = Base_Stepper._encoder.getAccumulatedAngleDeg() / BASE_RATIO;
-                float z_mm      = (Z_Stepper.getPosition() * 360.0f /
-                                   (float)Z_Stepper.stepsPerRev()) / Z_RATIO;
+                float base_deg = Base_Stepper._encoder.getAccumulatedAngleDeg() / BASE_RATIO;
+                float z_mm = (Z_Stepper.getPosition() * 360.0f /
+                              (float)Z_Stepper.stepsPerRev()) /
+                             Z_RATIO;
                 float elbow_deg = arm_motor.getPosition() / ARM_RATIO;
                 float wrist_deg = wrist_motor.getPosition() / WRIST_RATIO;
 
