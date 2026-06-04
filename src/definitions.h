@@ -4,6 +4,7 @@
 // ─── External Libraries ───────────────────────────────────────────
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "nvs_flash.h"
 #include <math.h>
 #include <stdio.h>
@@ -109,7 +110,7 @@ float ARM_RATIO   = 560.0f / 90.0f;    // motor° per elbow joint°
 // Wrist motor is geared/wired in the opposite rotational sense, so a positive
 // joint angle (IK convention) drives the motor negative. The sign keeps both
 // the command (joint→motor) and feedback (motor→joint) conversions consistent.
-float WRIST_RATIO = -560.0f / 90.0f;   // motor° per wrist joint° (inverted)
+float WRIST_RATIO = -560.0f / 90.0f*1.5f*0.5;   // motor° per wrist joint° (inverted)
 
 // SCARA link lengths (mm) — workspace: |L1-L2| ≤ p ≤ L1+L2
 float scara_l1 = 150.0f;
@@ -119,7 +120,7 @@ float scara_l2 = 100.0f;
 //   ARM_PLANE_HOME : arm-plane height when Z is homed (top limit)
 //   TCP_Z_DROP     : fixed vertical drop from the wrist down to the TCP
 //   home TCP height = ARM_PLANE_HOME - TCP_Z_DROP = 340 - 130 = 210 mm
-float ARM_PLANE_HOME = 190.0f;
+float ARM_PLANE_HOME = 205.0f;
 float TCP_Z_DROP     = 130.0f;
 
 // ─── MQTT Protocol ────────────────────────────────────────────────
@@ -128,6 +129,8 @@ float TCP_Z_DROP     = 130.0f;
 //   "1,x,y,z,tool_angle_deg"                Cartesian (IK) mode
 //   "2"                                     Z homing via limit switch
 //   "3"                                     zero base/elbow/wrist at current pose
+//   "4"                                     run hardcoded pick & place list
+//   "4,px,py,pz,qx,qy,qz[,close,open]"      single pick→place over MQTT
 //
 int mode      = -1;
 int prev_mode = -1;
@@ -161,6 +164,61 @@ float target_wrist_deg = 0.0f;
 bool motors_active = false;  // suppresses motor commands until first valid input
 bool z_homing      = false;
 
+// ─── Pick & Place (mode 4) ────────────────────────────────────────
+// Each row is a TCP target (x, y, z) in mm. Place rows sit at z ≈ 0.
+// For every point the arm first moves PP_APPROACH_MM above it (approach),
+// descends, actuates the gripper, then retreats back up — keeping the
+// horizontal moves clear of the table. Add/remove rows freely; pick_pts
+// and place_pts must stay the same length (PP_COUNT).
+#define PP_COUNT 2
+float pick_pts[PP_COUNT][3] = {
+    {200.0f, 100.0f, 100.0f},
+    {150.0f, -80.0f,  90.0f},
+};
+float place_pts[PP_COUNT][3] = {
+    {300.0f,   2.0f,   2.0f},
+    {250.0f, -50.0f,   0.0f},
+};
+
+float PP_APPROACH_MM = 20.0f;  // safe height above each point (mm)
+float pp_tool_deg    = 0.0f;   // tool/wrist orientation held through the run
+
+// Gripper servo duty (empirically 4–12). Tune to your gripper.
+float gripper_open_pwm  = 12.0f;  // release
+float gripper_close_pwm =  6.0f;  // grip
+
+// Arrival tolerances and gripper dwell (ticks @ 10 ms loop)
+float PP_ANG_TOL = 2.0f;   // joint arrival tolerance (deg)
+float PP_Z_TOL   = 2.0f;   // Z arrival tolerance (mm)
+#define PP_GRIP_TICKS 50   // dwell so the servo finishes moving (~500 ms)
+
+// A move sub-state advances once the joints settle OR this many ticks pass, so
+// a joint that physically can't reach its target (e.g. wrist) never deadlocks
+// the sequence. 250 ticks ≈ 2.5 s.
+#define PP_SETTLE_TIMEOUT 250
+int pp_settle = 0;         // ticks spent in the current move sub-state
+
+// Pick & place sub-state machine
+enum PPState
+{
+    PP_APPROACH_PICK, // move above the pick point
+    PP_DESCEND_PICK,  // lower onto the pick point
+    PP_GRIP_CLOSE,    // close gripper (dwell)
+    PP_LIFT_PICK,     // retreat back up
+    PP_APPROACH_PLACE,// move above the place point
+    PP_DESCEND_PLACE, // lower onto the place point
+    PP_GRIP_OPEN,     // open gripper (dwell)
+    PP_LIFT_PLACE,    // retreat, then advance to next pair
+    PP_DONE
+};
+int  pp_run_count = PP_COUNT; // pairs to run this pass (1 when sent over MQTT)
+bool pp_restart   = false;    // a new mode-4 command asks to restart the run
+int  pp_index     = 0;
+int  pp_state     = PP_APPROACH_PICK;
+bool pp_new_state = true;   // true on first tick in a sub-state → solve IK once
+bool pp_reachable = false;  // last IK solve for the current sub-state succeeded
+int  pp_dwell     = 0;      // gripper dwell counter
+
 // ─── Network ──────────────────────────────────────────────────────
 #define WIFI_SSID       "realme 11 Pro 5G"
 #define WIFI_PASSWORD   "z57ek35n"
@@ -170,7 +228,16 @@ bool z_homing      = false;
 #define TOPIC_SUB       "esp32/commands"
 
 // ─── Misc ─────────────────────────────────────────────────────────
-char pub_buf[96];
+char pub_buf[160];
 int  pub_tick = 0;
+
+// ─── Comms decoupling ─────────────────────────────────────────────
+// The control loop must never block on the network. Instead of publishing
+// inline, it enqueues short status strings here; a separate comms task drains
+// the queue and does the (potentially blocking) esp_mqtt publish off the
+// real-time core.
+#define MQTT_MSG_LEN      128
+#define MQTT_TX_QUEUE_LEN 8
+QueueHandle_t mqtt_tx_q = nullptr;
 
 #endif // __DEFINITIONS_H__

@@ -53,7 +53,7 @@ private:
     int32_t _calculated_position;
     uint32_t _steps_per_revolution;
 
-    uint32_t _last_update_ms;
+    int64_t _last_update_us;
     bool _is_moving;
 
     template <typename T>

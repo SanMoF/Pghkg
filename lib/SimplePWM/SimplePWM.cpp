@@ -34,6 +34,7 @@ void SimplePWM::setup(const uint8_t pin, const uint8_t channel, TimerConfig *tim
         .flags = invert,
     };
     _last_level = 0;
+    _last_freq  = timer_config->frequency;
     err = ledc_channel_config(&ledc_channel);
     if (err != ESP_OK)
         printf("LED set channel failed! err = %d\n", err);
@@ -65,7 +66,15 @@ void SimplePWM::setDuty(float duty_percentage)
 
 void SimplePWM::setFrequency(uint32_t frequency)
 {
+    // Reprogramming the LEDC timer resets it and glitches the output. Skip the
+    // call when the frequency is unchanged so a steady PWM/step train stays
+    // smooth instead of stuttering every time this is polled.
+    if (frequency == _last_freq)
+        return;
+
     esp_err_t err = ledc_set_freq(_timer_config->mode, _timer_config->timer, frequency);
     if (err != ESP_OK)
             printf("Failed to set freq: channel=%d, mode=%d,  timer=%d, err=%d\n", _channel, _timer_config->mode,_timer_config->timer, err);
+    else
+        _last_freq = frequency;
 }

@@ -1,4 +1,5 @@
 #include "Stepper.h"
+#include "esp_timer.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -14,7 +15,7 @@ Stepper::Stepper()
       _direction(true),
       _calculated_position(0),
       _steps_per_revolution(200),
-      _last_update_ms(0),
+      _last_update_us(0),
       _is_moving(false)
 {}
 
@@ -45,7 +46,7 @@ void Stepper::setup(uint8_t step_pin, uint8_t dir_pin, uint8_t pwm_channel,
     _pid.setULimit(4000.0f);
     _pid.reset();
 
-    _last_update_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    _last_update_us = esp_timer_get_time();
 }
 
 // ── goToAngle — absolute target, rearms only on new target ───────────────────
@@ -64,7 +65,7 @@ void Stepper::goToAngle(float target_deg, uint32_t base_frequency)
     _applyFrequency(_base_frequency);
     _stepperPWM.setDuty(50.0f);
     _is_moving      = true;
-    _last_update_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    _last_update_us = esp_timer_get_time();
 }
 
 // ── moveDegrees — relative move from current position ────────────────────────
@@ -84,7 +85,7 @@ void Stepper::moveDegrees(float degrees, uint32_t base_frequency)
     _applyFrequency(_base_frequency);
     _stepperPWM.setDuty(50.0f);
     _is_moving      = true;
-    _last_update_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    _last_update_us = esp_timer_get_time();
 }
 
 // ── update — call every timer tick ───────────────────────────────────────────
@@ -93,7 +94,7 @@ void Stepper::update()
     if (!_is_moving) return;
 
     _calculated_position = _estimateNewPosition();
-    _last_update_ms      = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    _last_update_us      = esp_timer_get_time();
 
     bool reached = (_direction  && _calculated_position >= _target_position) ||
                    (!_direction && _calculated_position <= _target_position);
@@ -121,9 +122,21 @@ void Stepper::update()
     }
 
     if (freq < 300.0f)
+    {
         _stepperPWM.setDuty(0.0f);  // below LEDC minimum, coast
+    }
     else
-        _applyFrequency((uint32_t)_clamp((int32_t)freq, (int32_t)300, (int32_t)16000));
+    {
+        // Snap to a 100 Hz grid so small PID wiggles don't reprogram the LEDC
+        // timer every tick. Combined with SimplePWM's same-value guard, the
+        // hardware is only touched on a real frequency step, keeping the pulse
+        // train smooth instead of glitching at the 100 Hz loop rate.
+        uint32_t f = (uint32_t)_clamp((int32_t)freq, (int32_t)300, (int32_t)16000);
+        f = (f / 100u) * 100u;
+        if (f < 300u)
+            f = 300u;
+        _applyFrequency(f);
+    }
 }
 
 int32_t Stepper::getPosition() const
@@ -164,9 +177,12 @@ void Stepper::_applyFrequency(uint32_t freq)
 
 int32_t Stepper::_estimateNewPosition() const
 {
-    uint32_t now_ms  = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    uint32_t elapsed = now_ms - _last_update_ms;
-    int32_t  steps   = (int32_t)((_current_frequency * elapsed) / 1000);
+    // Microsecond timing: tick-count timing (10 ms resolution) quantised the
+    // estimate into 0/40/80-step jumps, which made the PID frequency oscillate
+    // and the step train jitter. esp_timer gives a smooth, accurate elapsed.
+    int64_t now_us   = esp_timer_get_time();
+    int64_t elapsed  = now_us - _last_update_us;
+    int32_t steps    = (int32_t)((_current_frequency * elapsed) / 1000000LL);
     return _direction ? _calculated_position + steps
                       : _calculated_position - steps;
 }

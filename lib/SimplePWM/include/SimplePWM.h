@@ -25,6 +25,7 @@ private:
     ledc_channel_t _channel;
     TimerConfig *_timer_config;
     uint32_t _max_digital_level, _last_level;
+    uint32_t _last_freq;
 };
 
 #endif // _SIMPLEPWM_H
