@@ -18,6 +18,15 @@ struct EndEffectorPose
     float z;
 };
 
+// Operational-space velocity of the TCP (the end-effector "twist").
+struct EndEffectorTwist
+{
+    float vx;    // mm/s  (along base X)
+    float vy;    // mm/s  (along base Y)
+    float vz;    // mm/s  (+up, world Z)
+    float omega; // deg/s (TCP yaw rate about Z)
+};
+
 class Robotics
 {
 private:
@@ -63,6 +72,16 @@ public:
     // the returned pose.z is the absolute TCP height above the base.
     EndEffectorPose getEndEffectorPosition(float theta1_deg, float theta2_deg,
                                            float z_travel, float theta4_deg);
+
+    // Operational (Cartesian) velocity from the joint velocities via the
+    // SCARA Jacobian. Angles are the current joint *positions* (deg) and the
+    // d*_dt arguments are the current joint *speeds*:
+    //   dtheta1_dps / dtheta2_dps / dtheta4_dps : deg/s  (base, elbow, wrist)
+    //   dz_travel_mmps                          : mm/s   (leadscrew travel, +down)
+    // Returns the TCP twist (vx, vy, vz in mm/s, omega in deg/s).
+    EndEffectorTwist getEndEffectorVelocity(float theta1_deg, float theta2_deg,
+                                            float dtheta1_dps, float dtheta2_dps,
+                                            float dz_travel_mmps, float dtheta4_dps);
 
     // Solve IK and return best solution for given target and current state
     // Returns true if solution found, false if unreachable

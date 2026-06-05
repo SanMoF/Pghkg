@@ -43,6 +43,41 @@ EndEffectorPose Robotics::getEndEffectorPosition(float theta1_deg, float theta2_
     return pose;
 }
 
+EndEffectorTwist Robotics::getEndEffectorVelocity(float theta1_deg, float theta2_deg,
+                                                  float dtheta1_dps, float dtheta2_dps,
+                                                  float dz_travel_mmps, float dtheta4_dps)
+{
+    float t1 = theta1_deg * DEG_TO_RAD;
+    float t2 = theta2_deg * DEG_TO_RAD;
+
+    // Revolute joint rates expressed in rad/s for the Jacobian product.
+    float w1 = dtheta1_dps * DEG_TO_RAD;
+    float w2 = dtheta2_dps * DEG_TO_RAD;
+
+    float s1  = sinf(t1);
+    float c1  = cosf(t1);
+    float s12 = sinf(t1 + t2);
+    float c12 = cosf(t1 + t2);
+
+    // Planar SCARA position Jacobian (mm per rad), from
+    //   x = L1 c1 + L2 c12,  y = L1 s1 + L2 s12:
+    //   [vx]   [ -L1 s1 - L2 s12   -L2 s12 ] [w1]
+    //   [vy] = [  L1 c1 + L2 c12    L2 c12 ] [w2]
+    float J11 = -L1 * s1 - L2 * s12;
+    float J12 = -L2 * s12;
+    float J21 =  L1 * c1 + L2 * c12;
+    float J22 =  L2 * c12;
+
+    EndEffectorTwist tw;
+    tw.vx = J11 * w1 + J12 * w2;                 // mm/s
+    tw.vy = J21 * w1 + J22 * w2;                 // mm/s
+    // TCP height = home_tcp - travel  ⇒  world vz = -(travel rate).
+    tw.vz = -dz_travel_mmps;                     // mm/s, +up
+    // The TCP yaw rate about Z is the sum of every revolute joint rate.
+    tw.omega = dtheta1_dps + dtheta2_dps + dtheta4_dps; // deg/s
+    return tw;
+}
+
 bool Robotics::solveIK(float target_x, float target_y, float target_z, float target_tool_angle_deg,
                        float current_theta1_deg, float current_theta2_deg,
                        float current_z, float current_theta4_deg,

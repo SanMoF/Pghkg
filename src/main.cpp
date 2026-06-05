@@ -534,11 +534,41 @@ static void control_task(void *pvParameters)
                 EndEffectorPose pose = robot.getEndEffectorPosition(
                     base_deg, elbow_deg, z_mm, wrist_deg);
 
-                // Basic telemetry only: joint positions + end-effector pose.
+                // Actual joint speeds: differentiate the joint positions over
+                // the telemetry interval (pub_tick wraps every 10 control
+                // ticks → 10 * dt µs). First pass reports 0 to avoid a spike.
+                float tele_dt = 10.0f * dt * 1e-6f; // s
+                float base_dps  = 0.0f, z_mmps = 0.0f;
+                float elbow_dps = 0.0f, wrist_dps = 0.0f;
+                if (have_prev_joint)
+                {
+                    base_dps  = (base_deg  - prev_base_deg ) / tele_dt;
+                    z_mmps    = (z_mm      - prev_z_mm     ) / tele_dt;
+                    elbow_dps = (elbow_deg - prev_elbow_deg) / tele_dt;
+                    wrist_dps = (wrist_deg - prev_wrist_deg) / tele_dt;
+                }
+                prev_base_deg   = base_deg;
+                prev_z_mm       = z_mm;
+                prev_elbow_deg  = elbow_deg;
+                prev_wrist_deg  = wrist_deg;
+                have_prev_joint = true;
+
+                // Operational velocity of the TCP via the SCARA Jacobian.
+                EndEffectorTwist twist = robot.getEndEffectorVelocity(
+                    base_deg, elbow_deg, base_dps, elbow_dps, z_mmps, wrist_dps);
+
+                // Telemetry: joint positions, TCP pose, joint speeds, TCP
+                // velocity, and the gripper state (current servo duty).
                 snprintf(pub_buf, sizeof(pub_buf),
-                         "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+                         "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,"
+                         "%.2f,%.2f,%.2f,%.2f,"
+                         "%.2f,%.2f,%.2f,%.2f,"
+                         "%.2f",
                          base_deg, z_mm, elbow_deg, wrist_deg,
-                         pose.x, pose.y, pose.z);
+                         pose.x, pose.y, pose.z,
+                         base_dps, z_mmps, elbow_dps, wrist_dps,
+                         twist.vx, twist.vy, twist.vz, twist.omega,
+                         cmd_servo_pwm);
                 queuePublish(pub_buf);
             }
         }

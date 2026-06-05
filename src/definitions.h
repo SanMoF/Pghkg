@@ -132,6 +132,13 @@ float TCP_Z_DROP     = 130.0f;
 //   "4"                                     run hardcoded pick & place list
 //   "4,px,py,pz,qx,qy,qz[,close,open]"      single pick→place over MQTT
 //
+//   Published telemetry (esp32/status), 17 comma-separated fields @ 10 Hz:
+//     base_deg, z_mm, elbow_deg, wrist_deg,           joint positions
+//     x, y, z,                                        TCP position (mm)
+//     base_dps, z_mmps, elbow_dps, wrist_dps,         joint speeds
+//     vx, vy, vz, omega,                              TCP velocity (mm/s, deg/s)
+//     gripper_pwm                                     gripper state (servo duty)
+//
 int mode      = -1;
 int prev_mode = -1;
 
@@ -228,15 +235,24 @@ int  pp_dwell     = 0;      // gripper dwell counter
 #define TOPIC_SUB       "esp32/commands"
 
 // ─── Misc ─────────────────────────────────────────────────────────
-char pub_buf[160];
+char pub_buf[192];
 int  pub_tick = 0;
+
+// Previous joint positions, for differentiating into actual joint speeds in
+// the telemetry block. have_prev_joint is false until the first sample so the
+// first reported speed is 0 instead of a huge spike.
+float prev_base_deg    = 0.0f;
+float prev_z_mm        = 0.0f;
+float prev_elbow_deg   = 0.0f;
+float prev_wrist_deg   = 0.0f;
+bool  have_prev_joint  = false;
 
 // ─── Comms decoupling ─────────────────────────────────────────────
 // The control loop must never block on the network. Instead of publishing
 // inline, it enqueues short status strings here; a separate comms task drains
 // the queue and does the (potentially blocking) esp_mqtt publish off the
 // real-time core.
-#define MQTT_MSG_LEN      128
+#define MQTT_MSG_LEN      192
 #define MQTT_TX_QUEUE_LEN 8
 QueueHandle_t mqtt_tx_q = nullptr;
 
