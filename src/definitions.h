@@ -187,7 +187,7 @@ float place_pts[PP_COUNT][3] = {
     {250.0f, -50.0f,   0.0f},
 };
 
-float PP_APPROACH_MM = 20.0f;  // safe height above each point (mm)
+float PP_APPROACH_MM = 30.0f;  // safe height above each point (mm)
 float pp_tool_deg    = 0.0f;   // tool/wrist orientation held through the run
 
 // Gripper servo duty (empirically 4–12). Tune to your gripper.
