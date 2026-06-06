@@ -129,6 +129,17 @@ static void mqtt_task(void *pvParameters)
     }
 }
 
+// Wrap an angle (deg) into [-180, 180) so the wrist takes the equivalent short
+// rotation instead of unwinding a full turn. The IK wrist angle
+// (theta4 = tool - theta1 - theta2) can fall well outside ±180.
+static float wrapDeg180(float deg)
+{
+    deg = fmodf(deg + 180.0f, 360.0f);
+    if (deg < 0.0f)
+        deg += 360.0f;
+    return deg - 180.0f;
+}
+
 // Read the four joint values back in joint-space units (deg, deg, mm, deg).
 static void readJointState(float &base_deg, float &elbow_deg,
                            float &z_mm, float &wrist_deg)
@@ -305,7 +316,7 @@ static void control_task(void *pvParameters)
                         target_base_deg = sol.theta1 * 57.29577951f;
                         target_elbow_deg = sol.theta2 * 57.29577951f;
                         target_z_mm = sol.z;
-                        target_wrist_deg = sol.theta4 * 57.29577951f;
+                        target_wrist_deg = wrapDeg180(sol.theta4 * 57.29577951f);
 
                         last_cmd_x = cmd_x;
                         last_cmd_y = cmd_y;

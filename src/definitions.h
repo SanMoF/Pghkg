@@ -104,13 +104,17 @@ float wrist_vel_gains[3] = {2.0f, 0.5f, 0.05f};
 // ─── Mechanical ───────────────────────────────────────────────────
 #define Z_STEPS_PER_REV 1600u    // Z stepper microstepping setting
 
-float BASE_RATIO  = 4.0f;              // motor° per base joint°
+// Base motor turns the opposite handedness to the IK convention (atan2 is
+// CCW-positive; the base hardware is CW-positive), so the sign is negative.
+// It flips both the command (joint→motor) and feedback (motor→joint) together,
+// keeping the whole base chain in one consistent frame.
+float BASE_RATIO  = -4.0f;             // motor° per base joint° (inverted)
 float Z_RATIO     = 1000.0f / 22.0f;   // motor° per mm of Z travel (leadscrew)
 float ARM_RATIO   = 560.0f / 90.0f;    // motor° per elbow joint°
-// Wrist motor is geared/wired in the opposite rotational sense, so a positive
-// joint angle (IK convention) drives the motor negative. The sign keeps both
-// the command (joint→motor) and feedback (motor→joint) conversions consistent.
-float WRIST_RATIO = -560.0f / 90.0f*1.5f*0.5;   // motor° per wrist joint° (inverted)
+// Wrist motor rotational sense (sign) was flipped so a positive joint angle
+// (IK convention) drives the motor the correct way. The sign keeps both the
+// command (joint→motor) and feedback (motor→joint) conversions consistent.
+float WRIST_RATIO = 560.0f / 90.0f * 1.5f * 0.5f;   // motor° per wrist joint°
 
 // SCARA link lengths (mm) — workspace: |L1-L2| ≤ p ≤ L1+L2
 float scara_l1 = 150.0f;
@@ -120,7 +124,7 @@ float scara_l2 = 100.0f;
 //   ARM_PLANE_HOME : arm-plane height when Z is homed (top limit)
 //   TCP_Z_DROP     : fixed vertical drop from the wrist down to the TCP
 //   home TCP height = ARM_PLANE_HOME - TCP_Z_DROP = 340 - 130 = 210 mm
-float ARM_PLANE_HOME = 205.0f;
+float ARM_PLANE_HOME = 215.0f;
 float TCP_Z_DROP     = 130.0f;
 
 // ─── MQTT Protocol ────────────────────────────────────────────────

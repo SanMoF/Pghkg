@@ -21,12 +21,7 @@ void Robotics::setup(float link1_length, float link2_length,
 EndEffectorPose Robotics::getEndEffectorPosition(float theta1_deg, float theta2_deg,
                                                   float z_travel, float theta4_deg)
 {
-    // DH params per row: [theta, d, a, alpha]. All alpha = 0 (planar SCARA);
-    // the vertical chain lives entirely in the d terms:
-    //   joint 3 prismatic: d = arm-plane height = (home - travel), +up
-    //   joint 4 wrist:     d = -tcp_drop        (fixed downward tool offset)
-    // so tf[11] (= sum of d) = (Z_arm_plane_home - z_travel) - tcp_drop,
-    // i.e. the absolute TCP height above the base.
+    
     float dh[4][4] = {
         {theta1_deg * DEG_TO_RAD, 0.0f, L1, 0.0f},
         {theta2_deg * DEG_TO_RAD, 0.0f, L2, 0.0f},
@@ -50,7 +45,6 @@ EndEffectorTwist Robotics::getEndEffectorVelocity(float theta1_deg, float theta2
     float t1 = theta1_deg * DEG_TO_RAD;
     float t2 = theta2_deg * DEG_TO_RAD;
 
-    // Revolute joint rates expressed in rad/s for the Jacobian product.
     float w1 = dtheta1_dps * DEG_TO_RAD;
     float w2 = dtheta2_dps * DEG_TO_RAD;
 
@@ -59,10 +53,7 @@ EndEffectorTwist Robotics::getEndEffectorVelocity(float theta1_deg, float theta2
     float s12 = sinf(t1 + t2);
     float c12 = cosf(t1 + t2);
 
-    // Planar SCARA position Jacobian (mm per rad), from
-    //   x = L1 c1 + L2 c12,  y = L1 s1 + L2 s12:
-    //   [vx]   [ -L1 s1 - L2 s12   -L2 s12 ] [w1]
-    //   [vy] = [  L1 c1 + L2 c12    L2 c12 ] [w2]
+
     float J11 = -L1 * s1 - L2 * s12;
     float J12 = -L2 * s12;
     float J21 =  L1 * c1 + L2 * c12;
@@ -71,9 +62,7 @@ EndEffectorTwist Robotics::getEndEffectorVelocity(float theta1_deg, float theta2
     EndEffectorTwist tw;
     tw.vx = J11 * w1 + J12 * w2;                 // mm/s
     tw.vy = J21 * w1 + J22 * w2;                 // mm/s
-    // TCP height = home_tcp - travel  ⇒  world vz = -(travel rate).
     tw.vz = -dz_travel_mmps;                     // mm/s, +up
-    // The TCP yaw rate about Z is the sum of every revolute joint rate.
     tw.omega = dtheta1_dps + dtheta2_dps + dtheta4_dps; // deg/s
     return tw;
 }
@@ -113,43 +102,33 @@ int Robotics::Inverse_Kinematics(float x, float y, float z, float tool_angle, IK
     float max_reach = L1 + L2;
     float min_reach = fabsf(L1 - L2);
 
-    // Reachability check with tolerance for floating point boundary cases
     if (p > max_reach + 1e-4f || p < min_reach - 1e-4f)
         return 0;
 
-    // Clamp p to valid range so cos calculations don't go out of [-1, 1]
     p = fmaxf(min_reach, fminf(max_reach, p));
 
     float gamma = atan2f(y, x);
     float cos_alpha = (L1 * L1 + p * p - L2 * L2) / (2.0f * L1 * p);
     float cos_beta  = (L2 * L2 + L1 * L1 - p * p) / (2.0f * L1 * L2);
 
-    // Clamp for numerical safety before acos
     cos_alpha = fmaxf(-1.0f, fminf(1.0f, cos_alpha));
     cos_beta  = fmaxf(-1.0f, fminf(1.0f, cos_beta));
 
     float alpha = acosf(cos_alpha);
     float beta  = acosf(cos_beta);
 
-    // z is the target absolute TCP height above the base. Convert it to
-    // leadscrew travel (what the motor tracks): height = home_tcp - travel,
-    // so travel = home_tcp - height. Clamp at 0 so we never command the
-    // carriage above the home/limit stop.
     float z_travel = getHomeTcpHeight() - z;
     if (z_travel < 0.0f)
         z_travel = 0.0f;
 
-    // Solution 1: elbow-down
     solutions[0].theta1 = gamma - alpha;
     solutions[0].theta2 = M_PI - beta;
     solutions[0].z      = z_travel;
     solutions[0].theta4 = tool_angle - solutions[0].theta1 - solutions[0].theta2;
 
-    // Singular check: boundary of workspace → only one solution
     if (fabsf(p - max_reach) < 1e-4f || fabsf(p - min_reach) < 1e-4f)
         return 1;
 
-    // Solution 2: elbow-up
     solutions[1].theta1 = gamma + alpha;
     solutions[1].theta2 = beta - M_PI;
     solutions[1].z      = z_travel;
