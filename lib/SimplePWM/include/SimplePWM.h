@@ -2,6 +2,7 @@
 #define _SIMPLEPWM_H
 
 #include "driver/ledc.h"
+#include "driver/gpio.h"
 
 struct TimerConfig
 {

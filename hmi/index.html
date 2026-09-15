@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>BLDC Balance HMI</title>
+<style>
+  :root {
+    --bg: #10141a;
+    --panel: #1a2029;
+    --panel-2: #222a36;
+    --border: #2e3948;
+    --text: #e6ebf1;
+    --muted: #8a96a6;
+    --accent: #3fa9f5;
+    --ok: #35c26b;
+    --warn: #f5a83f;
+    --danger: #e8495f;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.3rem; margin: 4px 0 0; }
+  h2 { font-size: 1rem; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    flex: 1 1 320px;
+  }
+  .top-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06121c; font-weight: 600; }
+  button.danger { background: var(--danger); border-color: var(--danger); color: #2a0006; font-weight: 700; }
+  button.toggle.active { background: var(--ok); border-color: var(--ok); color: #04220f; font-weight: 600; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); display: inline-block; margin-right: 8px; }
+  .status-dot.connected { background: var(--ok); }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+  input[type=number], input[type=text] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font: inherit;
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  .slider-row input[type=number] { width: 80px; flex: none; }
+  .mode-switch { display: flex; gap: 8px; }
+  .mode-switch button { flex: 1; }
+  .field-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  #log {
+    background: #05080c;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    height: 220px;
+    overflow-y: auto;
+    padding: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .82rem;
+    white-space: pre-wrap;
+  }
+  .log-tx { color: var(--accent); }
+  .log-rx { color: var(--muted); }
+  .log-err { color: var(--danger); }
+  .hint { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+  [hidden] { display: none !important; }
+  .apply-btn { width: 100%; margin-top: 12px; }
+
+  .imu-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+  .horizon {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    position: relative;
+    overflow: hidden;
+    flex: none;
+  }
+  .horizon-tilt {
+    position: absolute;
+    left: -20px;
+    right: -20px;
+    top: 50%;
+    height: 200%;
+    background: linear-gradient(to bottom, #2b3f2f 0%, #2b3f2f 50%, #3a2b2b 50%, #3a2b2b 100%);
+    transform-origin: center top;
+  }
+  .horizon-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    background: var(--text);
+  }
+  .imu-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; flex: 1 1 260px; }
+  .imu-field { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+  .imu-field .k { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .imu-field .v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95rem; }
+  .imu-stale { color: var(--warn); }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div>
+    <h1>BLDC Balance HMI</h1>
+    <div class="hint">Control por UART — protocolo MODE / M1 / M2 / SET / PID / STOP</div>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <span><span id="statusDot" class="status-dot"></span><span id="statusText">Desconectado</span></span>
+    <button id="btnConnect" class="primary">Conectar</button>
+    <button id="btnDisconnect" disabled>Desconectar</button>
+  </div>
+</div>
+
+<div id="unsupported" class="panel" hidden>
+  Este navegador no soporta <b>Web Serial API</b>. Usa Chrome o Edge de escritorio,
+  y abre este archivo directamente (doble clic) o sírvelo por <code>http://localhost</code>.
+</div>
+
+<div class="row">
+  <div class="panel">
+    <h2>Modo de control</h2>
+    <div class="mode-switch">
+      <button id="btnModeSpeed" class="toggle active">Velocidad (MODE:0)</button>
+      <button id="btnModeBalance" class="toggle">Balance PID (MODE:1)</button>
+    </div>
+    <button id="btnStop" class="danger apply-btn">STOP — Detener ambos motores</button>
+  </div>
+
+  <div class="panel" id="speedPanel">
+    <h2>Control de velocidad (%)</h2>
+    <label for="m1Range">Motor 1</label>
+    <div class="slider-row">
+      <input type="range" id="m1Range" min="-100" max="100" value="0" step="1">
+      <input type="number" id="m1Num" min="-100" max="100" value="0">
+      <button id="btnSendM1">Enviar</button>
+    </div>
+    <label for="m2Range">Motor 2</label>
+    <div class="slider-row">
+      <input type="range" id="m2Range" min="-100" max="100" value="0" step="1">
+      <input type="number" id="m2Num" min="-100" max="100" value="0">
+      <button id="btnSendM2">Enviar</button>
+    </div>
+    <div class="hint">Mueve el slider o escribe el valor y pulsa "Enviar" — no se manda nada hasta que lo pidas. -100..100, negativo = reversa.</div>
+  </div>
+
+  <div class="panel" id="balancePanel" hidden>
+    <h2>Control PID de balance</h2>
+    <label for="setpoint">Setpoint (deg)</label>
+    <input type="number" id="setpoint" step="0.1" value="0">
+
+    <label>Ganancias PID</label>
+    <div class="field-grid">
+      <div>
+        <label for="kp">Kp</label>
+        <input type="number" id="kp" step="0.01" value="12.0">
+      </div>
+      <div>
+        <label for="ki">Ki</label>
+        <input type="number" id="ki" step="0.01" value="0.0">
+      </div>
+      <div>
+        <label for="kd">Kd</label>
+        <input type="number" id="kd" step="0.01" value="0.5">
+      </div>
+    </div>
+    <button id="btnApplyBalance" class="primary apply-btn">Enviar SET + PID</button>
+    <div class="hint">Nada se envía mientras editas los campos — solo al pulsar el botón.</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>IMU — debug de movimiento <span id="imuStatus" class="hint imu-stale">(sin datos)</span></h2>
+  <div class="imu-row">
+    <div class="horizon" title="Horizonte artificial (pitch)">
+      <div class="horizon-tilt" id="horizonTilt"><div class="horizon-line"></div></div>
+    </div>
+    <div class="imu-fields">
+      <div class="imu-field"><div class="k">Pitch</div><div class="v" id="imuPitch">--</div></div>
+      <div class="imu-field"><div class="k">Accel X (g)</div><div class="v" id="imuAx">--</div></div>
+      <div class="imu-field"><div class="k">Accel Y (g)</div><div class="v" id="imuAy">--</div></div>
+      <div class="imu-field"><div class="k">Accel Z (g)</div><div class="v" id="imuAz">--</div></div>
+      <div class="imu-field"><div class="k">Gyro X (°/s)</div><div class="v" id="imuGx">--</div></div>
+      <div class="imu-field"><div class="k">Gyro Y (°/s)</div><div class="v" id="imuGy">--</div></div>
+      <div class="imu-field"><div class="k">Gyro Z (°/s)</div><div class="v" id="imuGz">--</div></div>
+    </div>
+  </div>
+  <div class="hint">Se actualiza con las líneas <code>[IMU]</code> que el firmware imprime cada ~300 ms, en cualquier modo.</div>
+</div>
+
+<div class="panel">
+  <h2>Monitor serial</h2>
+  <div id="log"></div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  const statusDot   = $('statusDot');
+  const statusText  = $('statusText');
+  const btnConnect  = $('btnConnect');
+  const btnDisconnect = $('btnDisconnect');
+  const logEl       = $('log');
+  const unsupported = $('unsupported');
+
+  const btnModeSpeed   = $('btnModeSpeed');
+  const btnModeBalance = $('btnModeBalance');
+  const speedPanel     = $('speedPanel');
+  const balancePanel   = $('balancePanel');
+  const btnStop        = $('btnStop');
+
+  const m1Range = $('m1Range'), m1Num = $('m1Num'), btnSendM1 = $('btnSendM1');
+  const m2Range = $('m2Range'), m2Num = $('m2Num'), btnSendM2 = $('btnSendM2');
+  const setpointEl = $('setpoint');
+  const kpEl = $('kp'), kiEl = $('ki'), kdEl = $('kd');
+  const btnApplyBalance = $('btnApplyBalance');
+
+  const horizonTilt = $('horizonTilt');
+  const imuStatus = $('imuStatus');
+  const imuPitch = $('imuPitch');
+  const imuAx = $('imuAx'), imuAy = $('imuAy'), imuAz = $('imuAz');
+  const imuGx = $('imuGx'), imuGy = $('imuGy'), imuGz = $('imuGz');
+
+  const BAUD_RATE = 115200;
+
+  let port = null;
+  let writer = null;
+  let reader = null;
+  let readAbort = false;
+  let rxBuffer = '';
+
+  function log(text, cls) {
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    const ts = new Date().toLocaleTimeString();
+    line.textContent = `[${ts}] ${text}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setConnected(connected) {
+    statusDot.classList.toggle('connected', connected);
+    statusText.textContent = connected ? 'Conectado' : 'Desconectado';
+    btnConnect.disabled = connected;
+    btnDisconnect.disabled = !connected;
+  }
+
+  async function connect() {
+    try {
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: BAUD_RATE });
+      writer = port.writable.getWriter();
+      readAbort = false;
+      setConnected(true);
+      log(`Puerto abierto @ ${BAUD_RATE} baud`, 'log-rx');
+      readLoop();
+    } catch (err) {
+      log(`Error al conectar: ${err.message}`, 'log-err');
+    }
+  }
+
+  async function disconnect() {
+    readAbort = true;
+    try {
+      if (reader) {
+        await reader.cancel();
+        reader.releaseLock();
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      if (writer) {
+        writer.releaseLock();
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      if (port) await port.close();
+    } catch (e) { /* ignore */ }
+    port = null;
+    writer = null;
+    reader = null;
+    setConnected(false);
+    log('Puerto cerrado', 'log-rx');
+  }
+
+  async function readLoop() {
+    const decoder = new TextDecoderStream();
+    const streamClosed = port.readable.pipeTo(decoder.writable).catch(() => {});
+    reader = decoder.readable.getReader();
+    while (!readAbort) {
+      let result;
+      try {
+        result = await reader.read();
+      } catch (err) {
+        if (!readAbort) log(`Error de lectura: ${err.message}`, 'log-err');
+        break;
+      }
+      if (result.done) break;
+      rxBuffer += result.value;
+      let idx;
+      while ((idx = rxBuffer.indexOf('\n')) >= 0) {
+        const line = rxBuffer.slice(0, idx).replace(/\r$/, '');
+        rxBuffer = rxBuffer.slice(idx + 1);
+        if (line.length) {
+          log(line, 'log-rx');
+          handleImuLine(line);
+        }
+      }
+    }
+    await streamClosed;
+  }
+
+  // ── IMU debug panel — parses "[IMU] pitch=.. ax=.. ay=.. az=.. gx=.. gy=.. gz=.." ──
+  const IMU_RE = /^\[IMU\] pitch=(-?[\d.]+) ax=(-?[\d.]+) ay=(-?[\d.]+) az=(-?[\d.]+) gx=(-?[\d.]+) gy=(-?[\d.]+) gz=(-?[\d.]+)/;
+  let imuStaleTimer = null;
+
+  function handleImuLine(line) {
+    const m = IMU_RE.exec(line);
+    if (!m) return;
+
+    imuPitch.textContent = `${Number(m[1]).toFixed(2)}°`;
+    imuAx.textContent = Number(m[2]).toFixed(3);
+    imuAy.textContent = Number(m[3]).toFixed(3);
+    imuAz.textContent = Number(m[4]).toFixed(3);
+    imuGx.textContent = Number(m[5]).toFixed(2);
+    imuGy.textContent = Number(m[6]).toFixed(2);
+    imuGz.textContent = Number(m[7]).toFixed(2);
+
+    horizonTilt.style.transform = `rotate(${(-Number(m[1])).toFixed(1)}deg)`;
+
+    imuStatus.textContent = '(en vivo)';
+    imuStatus.classList.remove('imu-stale');
+    if (imuStaleTimer) clearTimeout(imuStaleTimer);
+    imuStaleTimer = setTimeout(() => {
+      imuStatus.textContent = '(sin datos recientes)';
+      imuStatus.classList.add('imu-stale');
+    }, 2000);
+  }
+
+  async function sendCommand(cmd) {
+    if (!writer) {
+      log('No conectado — abre el puerto primero', 'log-err');
+      return;
+    }
+    try {
+      await writer.write(new TextEncoder().encode(cmd + '\n'));
+      log(cmd, 'log-tx');
+    } catch (err) {
+      log(`Error al enviar: ${err.message}`, 'log-err');
+    }
+  }
+
+  // ── Mode switch ──────────────────────────────────────────────────
+  function setUiMode(mode) {
+    btnModeSpeed.classList.toggle('active', mode === 0);
+    btnModeBalance.classList.toggle('active', mode === 1);
+    speedPanel.hidden = mode !== 0;
+    balancePanel.hidden = mode !== 1;
+  }
+
+  btnModeSpeed.addEventListener('click', () => {
+    setUiMode(0);
+    sendCommand('MODE:0');
+  });
+  btnModeBalance.addEventListener('click', () => {
+    setUiMode(1);
+    sendCommand('MODE:1');
+  });
+
+  btnStop.addEventListener('click', () => {
+    setUiMode(0);
+    m1Range.value = 0; m1Num.value = 0;
+    m2Range.value = 0; m2Num.value = 0;
+    sendCommand('STOP');
+  });
+
+  // ── Speed sliders/inputs — only keep range/number in sync; nothing is
+  //    sent over UART until the "Enviar" button is pressed. ──────────
+  function linkSlider(range, num, sendBtn, cmdPrefix) {
+    range.addEventListener('input', () => { num.value = range.value; });
+    num.addEventListener('input', () => {
+      let v = Math.max(-100, Math.min(100, Number(num.value) || 0));
+      range.value = v;
+    });
+    sendBtn.addEventListener('click', () => {
+      let v = Math.max(-100, Math.min(100, Number(num.value) || 0));
+      range.value = v;
+      num.value = v;
+      sendCommand(`${cmdPrefix}:${v}`);
+    });
+  }
+  linkSlider(m1Range, m1Num, btnSendM1, 'M1');
+  linkSlider(m2Range, m2Num, btnSendM2, 'M2');
+
+  // ── Balance panel ────────────────────────────────────────────────
+  btnApplyBalance.addEventListener('click', async () => {
+    await sendCommand(`SET:${Number(setpointEl.value) || 0}`);
+    await sendCommand(`PID:${Number(kpEl.value) || 0},${Number(kiEl.value) || 0},${Number(kdEl.value) || 0}`);
+  });
+
+  // ── Connection buttons ───────────────────────────────────────────
+  btnConnect.addEventListener('click', connect);
+  btnDisconnect.addEventListener('click', disconnect);
+
+  if (!('serial' in navigator)) {
+    unsupported.hidden = false;
+    btnConnect.disabled = true;
+  }
+})();
+</script>
+
+</body>
+</html>
