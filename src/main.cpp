@@ -154,6 +154,16 @@ extern "C" void app_main()
 
     esc1.setup(ESC1_PIN, ESC1_CH, &ESC_TIMER);
     esc2.setup(ESC2_PIN, ESC2_CH, &ESC_TIMER);
+    // Calibrated on esc2: the motor doesn't actually spin below a commanded
+    // ~24% on the old linear scale (ESC/motor spin-up dead zone). Rescaling
+    // by that amount means any pct > 0 sent over UART now clears the dead
+    // zone, giving the PID real resolution near the start of the range
+    // instead of a first 24% that does nothing. Same ESC model on both
+    // motors, so applied to esc1 too — re-tune ESC_DEADBAND_PCT per motor
+    // if esc1 turns out to need a different threshold.
+    #define ESC_DEADBAND_PCT 24.0f
+    esc1.setDeadbandPercent(ESC_DEADBAND_PCT);
+    esc2.setDeadbandPercent(ESC_DEADBAND_PCT);
     esc1.arm();
     esc2.arm();
     // Hold the stop pulse so both ESCs finish arming before any throttle

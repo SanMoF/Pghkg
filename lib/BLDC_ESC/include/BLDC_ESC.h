@@ -28,8 +28,21 @@ public:
     void arm();
 
     // pct in [0, 100]: 0 = idle, 100 = full throttle. Negative values are
-    // clamped to 0 — this ESC has no reverse.
+    // clamped to 0 — this ESC has no reverse. Below deadbandPercent (see
+    // setDeadbandPercent), any pct > 0 is remapped to start right at the
+    // motor's real spin-up threshold instead of wasting the low end of the
+    // range on a pulse too weak to turn the rotor.
     void setThrottlePercent(float pct);
+
+    // Calibrates out the ESC/motor's spin-up dead zone. `pct` is the lowest
+    // commanded percent (0-100, on the old linear min-to-max scale) at
+    // which the motor was observed to actually start turning — found by
+    // ramping setThrottlePercent() up from 0 until it moves. Once set,
+    // requesting any pct in (0, 100] rescales onto [pct, 100] instead of
+    // [0, 100], so 1% already spins the motor — giving the PID usable
+    // resolution near the start of the range instead of a dead first
+    // stretch. 0% still means true idle. Defaults to 0 (no rescaling).
+    void setDeadbandPercent(float pct);
 
     void stop();
 
@@ -38,6 +51,7 @@ private:
     uint16_t  _min_us;
     uint16_t  _max_us;
     uint32_t  _period_us;
+    float     _deadband_pct;
 };
 
 #endif // _BLDC_ESC_H_
