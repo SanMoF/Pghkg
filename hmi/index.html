@@ -158,17 +158,17 @@
     <h2>Control de velocidad (%)</h2>
     <label for="m1Range">Motor 1</label>
     <div class="slider-row">
-      <input type="range" id="m1Range" min="-100" max="100" value="0" step="1">
-      <input type="number" id="m1Num" min="-100" max="100" value="0">
+      <input type="range" id="m1Range" min="0" max="100" value="0" step="1">
+      <input type="number" id="m1Num" min="0" max="100" value="0">
       <button id="btnSendM1">Enviar</button>
     </div>
     <label for="m2Range">Motor 2</label>
     <div class="slider-row">
-      <input type="range" id="m2Range" min="-100" max="100" value="0" step="1">
-      <input type="number" id="m2Num" min="-100" max="100" value="0">
+      <input type="range" id="m2Range" min="0" max="100" value="0" step="1">
+      <input type="number" id="m2Num" min="0" max="100" value="0">
       <button id="btnSendM2">Enviar</button>
     </div>
-    <div class="hint">Mueve el slider o escribe el valor y pulsa "Enviar" — no se manda nada hasta que lo pidas. -100..100, negativo = reversa.</div>
+    <div class="hint">Mueve el slider o escribe el valor y pulsa "Enviar" — no se manda nada hasta que lo pidas. 0..100 — los ESC son unidireccionales, sin reversa.</div>
   </div>
 
   <div class="panel" id="balancePanel" hidden>
@@ -406,11 +406,11 @@
   function linkSlider(range, num, sendBtn, cmdPrefix) {
     range.addEventListener('input', () => { num.value = range.value; });
     num.addEventListener('input', () => {
-      let v = Math.max(-100, Math.min(100, Number(num.value) || 0));
+      let v = Math.max(0, Math.min(100, Number(num.value) || 0));
       range.value = v;
     });
     sendBtn.addEventListener('click', () => {
-      let v = Math.max(-100, Math.min(100, Number(num.value) || 0));
+      let v = Math.max(0, Math.min(100, Number(num.value) || 0));
       range.value = v;
       num.value = v;
       sendCommand(`${cmdPrefix}:${v}`);

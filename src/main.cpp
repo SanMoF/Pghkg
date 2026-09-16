@@ -9,8 +9,8 @@ static void IRAM_ATTR telemISR(void *arg) { telemTimer.setInterrupt(); }
 //
 //   MODE:0            switch to manual speed control
 //   MODE:1            switch to PID balance control
-//   M1:<pct>          motor 1 speed, -100..100 %   (mode 0 only)
-//   M2:<pct>          motor 2 speed, -100..100 %   (mode 0 only)
+//   M1:<pct>          motor 1 speed, 0..100 %   (mode 0 only, no reverse — ESCs are unidirectional)
+//   M2:<pct>          motor 2 speed, 0..100 %   (mode 0 only, no reverse — ESCs are unidirectional)
 //   SET:<deg>         balance setpoint (target pitch, deg)
 //   PID:<kp>,<ki>,<kd> balance PID gains
 //   STOP              zero both motors and force mode 0 (safety)
