@@ -59,7 +59,9 @@ SimpleTimer  telemTimer;
 SimpleUART   console(CONSOLE_BAUD, UART_NUM_0);
 BLDC_ESC     esc1;
 BLDC_ESC     esc2;
-BMI270       imu(I2C_NUM_0, IMU_SDA_PIN, IMU_SCL_PIN);
+// Address 0x69 (SDO/AD0 high) — this module answers there on the bench,
+// not the default 0x68 (SDO low).
+BMI270       imu(I2C_NUM_0, IMU_SDA_PIN, IMU_SCL_PIN, 400000, 0x69);
 PID_CAYETANO balancePID;
 bool         imuAvailable = false; // set once in setup() after imu.begin()
 
