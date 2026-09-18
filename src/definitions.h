@@ -15,7 +15,7 @@
 #include "SimpleUART.h"
 #include "SimplePWM.h"
 #include "BLDC_ESC.h"
-#include "MPU6050.h"
+#include "BMI270.h"
 #include "PID_CAYETANO.h"
 
 // ─── Pin Definitions ──────────────────────────────────────────────
@@ -26,9 +26,13 @@
 #define ESC2_PIN     GPIO_NUM_19
 #define ESC2_CH      1
 
-// MPU6050 I2C pins (balance sensor)
-#define MPU_SDA_PIN  GPIO_NUM_21
-#define MPU_SCL_PIN  GPIO_NUM_22
+// BMI270 I2C pins (balance sensor)
+// Confirmed healthy on the previous MPU6050 (same physical bus): swapping
+// to GPIO25/26 reproduced the exact same "nothing ACKs" failure, ruling out
+// damage to these pins. Re-verify wiring/address with scanBus() if the
+// BMI270 doesn't respond on first boot — see CONEXIONES.md.
+#define IMU_SDA_PIN  GPIO_NUM_21
+#define IMU_SCL_PIN  GPIO_NUM_22
 
 // UART used for the control console (default USB serial monitor port)
 #define CONSOLE_BAUD 115200
@@ -55,7 +59,7 @@ SimpleTimer  telemTimer;
 SimpleUART   console(CONSOLE_BAUD, UART_NUM_0);
 BLDC_ESC     esc1;
 BLDC_ESC     esc2;
-MPU6050      imu(I2C_NUM_0, MPU_SDA_PIN, MPU_SCL_PIN);
+BMI270       imu(I2C_NUM_0, IMU_SDA_PIN, IMU_SCL_PIN);
 PID_CAYETANO balancePID;
 bool         imuAvailable = false; // set once in setup() after imu.begin()
 
@@ -72,9 +76,17 @@ float motor1SpeedPct = 0.0f;
 float motor2SpeedPct = 0.0f;
 
 // ── Mode 1: balance PID ─────────────────────────────────────────────
+// This is a seesaw/rocker balance: one motor at each end, correcting tilt
+// needs DIFFERENTIAL thrust (one side up, the other down from a shared
+// base), not the same throttle on both. ESCs have no reverse, so "down"
+// only works down to 0% — the base has to sit above 0 so the falling side
+// still has room to actually decrease.
+//   esc1 = balanceBasePct + balanceOutputPct
+//   esc2 = balanceBasePct - balanceOutputPct
 float balanceSetpointDeg = 0.0f;         // target pitch, deg
 float balanceGains[3]     = {12.0f, 0.0f, 0.5f}; // Kp, Ki, Kd
 float balanceOutputPct    = 0.0f;        // last PID output, for telemetry
+float balanceBasePct      = 40.0f;       // shared thrust both sides mix around
 #define BALANCE_OUTPUT_LIMIT_PCT 100.0f
 
 // ── UART line-command buffer ────────────────────────────────────────

@@ -156,7 +156,7 @@ esp_err_t MPU6050::calibrateGyro(int samples)
 
     for (int i = 0; i < samples; i++) {
         if (readRaw(accel, gyro) == ESP_OK) {
-            sum += gyro[1]; // pitch axis
+            sum += gyro[0]; // balance axis — see update()
             ok++;
         }
         vTaskDelay(pdMS_TO_TICKS(2));
@@ -168,7 +168,7 @@ esp_err_t MPU6050::calibrateGyro(int samples)
     }
 
     _gyro_offset_dps = (float)(sum / ok) / MPU6050_GYRO_LSB_PER_DPS;
-    ESP_LOGI(TAG, "Gyro pitch offset: %.3f deg/s (%d/%d samples)", _gyro_offset_dps, ok, samples);
+    ESP_LOGI(TAG, "Gyro balance-axis offset: %.3f deg/s (%d/%d samples)", _gyro_offset_dps, ok, samples);
     return ESP_OK;
 }
 
@@ -179,11 +179,18 @@ esp_err_t MPU6050::update(float dt_s)
     if (err != ESP_OK)
         return err;
 
-    float ax = (float)accel[0] / MPU6050_ACCEL_LSB_PER_G;
+    // Bench-confirmed with debug_mpu (hand-tilting the mounted board): ax/az
+    // (classic "pitch") tracks LEFT/RIGHT tilt on this robot, not the
+    // forward/back fall the wheel-balance loop needs to correct — the
+    // sensor's mounting orientation puts the wheelbase's tilt axis on ay/az
+    // instead. Sign (whether leaning forward reads positive or negative) is
+    // NOT yet bench-verified — confirm with debug_mpu before arming the
+    // ESCs, and flip the sign here if the PID pushes the wrong way.
+    float ay = (float)accel[1] / MPU6050_ACCEL_LSB_PER_G;
     float az = (float)accel[2] / MPU6050_ACCEL_LSB_PER_G;
-    float accel_pitch_deg = atan2f(-ax, az) * 180.0f / (float)M_PI;
+    float accel_pitch_deg = atan2f(-ay, az) * 180.0f / (float)M_PI;
 
-    float gyro_rate_dps = (float)gyro[1] / MPU6050_GYRO_LSB_PER_DPS - _gyro_offset_dps;
+    float gyro_rate_dps = (float)gyro[0] / MPU6050_GYRO_LSB_PER_DPS - _gyro_offset_dps;
 
     if (!_pitch_ready) {
         _pitch_deg   = accel_pitch_deg;

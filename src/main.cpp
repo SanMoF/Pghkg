@@ -13,6 +13,9 @@ static void IRAM_ATTR telemISR(void *arg) { telemTimer.setInterrupt(); }
 //   M2:<pct>          motor 2 speed, 0..100 %   (mode 0 only, no reverse — ESCs are unidirectional)
 //   SET:<deg>         balance setpoint (target pitch, deg)
 //   PID:<kp>,<ki>,<kd> balance PID gains
+//   BASE:<pct>        balance base thrust, 0..100 % — both motors mix
+//                      around this; the PID output adds to one side and
+//                      subtracts from the other (mode 1 only)
 //   STOP              zero both motors and force mode 0 (safety)
 //
 // Example (type into the PlatformIO serial monitor, one per line):
@@ -22,6 +25,7 @@ static void IRAM_ATTR telemISR(void *arg) { telemTimer.setInterrupt(); }
 //   MODE:1
 //   SET:0.0
 //   PID:12.0,0.5,0.8
+//   BASE:40
 //
 static void processUartLine(char *line)
 {
@@ -102,6 +106,13 @@ static void processUartLine(char *line)
         balancePID.setULimit(BALANCE_OUTPUT_LIMIT_PCT);
         printf("-> PID Kp=%.3f Ki=%.3f Kd=%.3f\n", kp, ki, kd);
     }
+    else if (strcmp(line, "BASE") == 0 && args)
+    {
+        balanceBasePct = atof(args);
+        if (balanceBasePct < 0.0f)   balanceBasePct = 0.0f;
+        if (balanceBasePct > 100.0f) balanceBasePct = 100.0f;
+        printf("-> BASE=%.1f%%\n", balanceBasePct);
+    }
     else if (strcmp(line, "STOP") == 0)
     {
         motor1SpeedPct = 0.0f;
@@ -175,7 +186,7 @@ extern "C" void app_main()
     if (imuAvailable)
         imu.calibrateGyro(); // robot must be held still during boot
     else
-        printf("WARNING: MPU6050 not detected — balance mode will not work, "
+        printf("WARNING: BMI270 not detected — balance mode will not work, "
                "IMU reads will be skipped\n");
 
     balancePID.setup(balanceGains, (float)CTRL_DT_US);
@@ -213,8 +224,13 @@ extern "C" void app_main()
                 float error = balanceSetpointDeg - pitch;
                 balanceOutputPct = balancePID.computedU(error);
 
-                esc1.setThrottlePercent(balanceOutputPct);
-                esc2.setThrottlePercent(balanceOutputPct);
+                // Seesaw balance: differential thrust around a shared base,
+                // one side up and the other down — NOT the same value on
+                // both (that only changes total lift, never the tilt).
+                // setThrottlePercent() clamps each side to [0, 100] on its
+                // own, so this needs no extra clamping here.
+                esc1.setThrottlePercent(balanceBasePct + balanceOutputPct);
+                esc2.setThrottlePercent(balanceBasePct - balanceOutputPct);
             }
         }
 
@@ -231,8 +247,10 @@ extern "C" void app_main()
             }
             else
             {
-                printf("[BALANCE] pitch=%.2f set=%.2f out=%.2f%% (Kp=%.2f Ki=%.2f Kd=%.2f)\n",
-                       imu.getPitchDeg(), balanceSetpointDeg, balanceOutputPct,
+                printf("[BALANCE] pitch=%.2f set=%.2f base=%.1f%% out=%.2f%% -> "
+                       "M1=%.1f%% M2=%.1f%% (Kp=%.2f Ki=%.2f Kd=%.2f)\n",
+                       imu.getPitchDeg(), balanceSetpointDeg, balanceBasePct, balanceOutputPct,
+                       balanceBasePct + balanceOutputPct, balanceBasePct - balanceOutputPct,
                        balanceGains[0], balanceGains[1], balanceGains[2]);
             }
 
@@ -248,12 +266,12 @@ extern "C" void app_main()
                 {
                     printf("[IMU] pitch=%.2f ax=%.3f ay=%.3f az=%.3f gx=%.2f gy=%.2f gz=%.2f\n",
                            imu.getPitchDeg(),
-                           accelRaw[0] / MPU6050_ACCEL_LSB_PER_G,
-                           accelRaw[1] / MPU6050_ACCEL_LSB_PER_G,
-                           accelRaw[2] / MPU6050_ACCEL_LSB_PER_G,
-                           gyroRaw[0] / MPU6050_GYRO_LSB_PER_DPS,
-                           gyroRaw[1] / MPU6050_GYRO_LSB_PER_DPS,
-                           gyroRaw[2] / MPU6050_GYRO_LSB_PER_DPS);
+                           accelRaw[0] / BMI270_ACCEL_LSB_PER_G,
+                           accelRaw[1] / BMI270_ACCEL_LSB_PER_G,
+                           accelRaw[2] / BMI270_ACCEL_LSB_PER_G,
+                           gyroRaw[0] / BMI270_GYRO_LSB_PER_DPS,
+                           gyroRaw[1] / BMI270_GYRO_LSB_PER_DPS,
+                           gyroRaw[2] / BMI270_GYRO_LSB_PER_DPS);
                 }
                 else
                 {
