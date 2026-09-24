@@ -44,6 +44,12 @@ public:
     // stretch. 0% still means true idle. Defaults to 0 (no rescaling).
     void setDeadbandPercent(float pct);
 
+    // Caps how far setThrottlePercent() is allowed to go, e.g. 30 limits the
+    // motor to 30% even if a caller asks for 100. Runtime-adjustable (unlike
+    // the deadband, which is a one-time calibration) so it can be tuned from
+    // the HMI while the motor is spinning. Defaults to 100 (no cap).
+    void setMaxThrottlePercent(float pct);
+
     void stop();
 
 private:
@@ -52,6 +58,7 @@ private:
     uint16_t  _max_us;
     uint32_t  _period_us;
     float     _deadband_pct;
+    float     _max_throttle_pct;
 };
 
 #endif // _BLDC_ESC_H_

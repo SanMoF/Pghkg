@@ -152,6 +152,14 @@
       <button id="btnModeBalance" class="toggle">Balance PID (MODE:1)</button>
     </div>
     <button id="btnStop" class="danger apply-btn">STOP — Detener ambos motores</button>
+
+    <label for="maxPctRange">Límite máximo de throttle (%) — ambos ESC</label>
+    <div class="slider-row">
+      <input type="range" id="maxPctRange" min="0" max="100" value="30" step="1">
+      <input type="number" id="maxPctNum" min="0" max="100" value="30">
+      <button id="btnSendMaxPct">Enviar</button>
+    </div>
+    <div class="hint">MAXPCT:&lt;pct&gt; — limita ambos ESC sin importar el modo. 30% es el valor que se comprobó seguro en banco.</div>
   </div>
 
   <div class="panel" id="speedPanel">
@@ -239,6 +247,7 @@
 
   const m1Range = $('m1Range'), m1Num = $('m1Num'), btnSendM1 = $('btnSendM1');
   const m2Range = $('m2Range'), m2Num = $('m2Num'), btnSendM2 = $('btnSendM2');
+  const maxPctRange = $('maxPctRange'), maxPctNum = $('maxPctNum'), btnSendMaxPct = $('btnSendMaxPct');
   const setpointEl = $('setpoint');
   const kpEl = $('kp'), kiEl = $('ki'), kdEl = $('kd');
   const btnApplyBalance = $('btnApplyBalance');
@@ -418,6 +427,7 @@
   }
   linkSlider(m1Range, m1Num, btnSendM1, 'M1');
   linkSlider(m2Range, m2Num, btnSendM2, 'M2');
+  linkSlider(maxPctRange, maxPctNum, btnSendMaxPct, 'MAXPCT');
 
   // ── Balance panel ────────────────────────────────────────────────
   btnApplyBalance.addEventListener('click', async () => {

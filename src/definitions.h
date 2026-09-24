@@ -86,10 +86,19 @@ float motor2SpeedPct = 0.0f;
 //   esc1 = balanceBasePct + balanceOutputPct
 //   esc2 = balanceBasePct - balanceOutputPct
 float balanceSetpointDeg = 0.0f;         // target pitch, deg
-float balanceGains[3]     = {12.0f, 0.0f, 0.5f}; // Kp, Ki, Kd
+float balanceGains[3]     = {1.0f, 0.0f, 0.5f}; // Kp, Ki, Kd
 float balanceOutputPct    = 0.0f;        // last PID output, for telemetry
 float balanceBasePct      = 40.0f;       // shared thrust both sides mix around
-#define BALANCE_OUTPUT_LIMIT_PCT 100.0f
+#define BALANCE_OUTPUT_LIMIT_PCT 10.0f
+
+// ── Runtime throttle ceiling ─────────────────────────────────────────
+// Caps both ESCs' setThrottlePercent() so nothing beyond this ever reaches
+// the motors. 30% was found on the bench to be a safe ceiling for the ESC
+// that was jumping to full throttle at low commanded pct. Adjustable at
+// runtime (MAXPCT:<pct> over UART / the HMI) instead of baked in, since the
+// right value depends on hardware behavior discovered by testing, not a
+// fixed calibration like the deadband.
+float escMaxThrottlePct = 30.0f;
 
 // ── UART line-command buffer ────────────────────────────────────────
 #define UART_LINE_MAX 96

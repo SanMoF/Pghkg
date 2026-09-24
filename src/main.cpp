@@ -16,6 +16,8 @@ static void IRAM_ATTR telemISR(void *arg) { telemTimer.setInterrupt(); }
 //   BASE:<pct>        balance base thrust, 0..100 % — both motors mix
 //                      around this; the PID output adds to one side and
 //                      subtracts from the other (mode 1 only)
+//   MAXPCT:<pct>      throttle ceiling, 0..100 % — caps both ESCs'
+//                      setThrottlePercent() regardless of mode
 //   STOP              zero both motors and force mode 0 (safety)
 //
 // Example (type into the PlatformIO serial monitor, one per line):
@@ -24,7 +26,7 @@ static void IRAM_ATTR telemISR(void *arg) { telemTimer.setInterrupt(); }
 //   M2:30
 //   MODE:1
 //   SET:0.0
-//   PID:12.0,0.5,0.8
+//   PID:1.0,0.5,0.8
 //   BASE:40
 //
 static void processUartLine(char *line)
@@ -113,6 +115,15 @@ static void processUartLine(char *line)
         if (balanceBasePct > 100.0f) balanceBasePct = 100.0f;
         printf("-> BASE=%.1f%%\n", balanceBasePct);
     }
+    else if (strcmp(line, "MAXPCT") == 0 && args)
+    {
+        escMaxThrottlePct = atof(args);
+        if (escMaxThrottlePct < 0.0f)   escMaxThrottlePct = 0.0f;
+        if (escMaxThrottlePct > 100.0f) escMaxThrottlePct = 100.0f;
+        esc1.setMaxThrottlePercent(escMaxThrottlePct);
+        esc2.setMaxThrottlePercent(escMaxThrottlePct);
+        printf("-> MAXPCT=%.1f%%\n", escMaxThrottlePct);
+    }
     else if (strcmp(line, "STOP") == 0)
     {
         motor1SpeedPct = 0.0f;
@@ -165,16 +176,18 @@ extern "C" void app_main()
 
     esc1.setup(ESC1_PIN, ESC1_CH, &ESC_TIMER);
     esc2.setup(ESC2_PIN, ESC2_CH, &ESC_TIMER);
-    // Calibrated on esc2: the motor doesn't actually spin below a commanded
-    // ~24% on the old linear scale (ESC/motor spin-up dead zone). Rescaling
-    // by that amount means any pct > 0 sent over UART now clears the dead
-    // zone, giving the PID real resolution near the start of the range
-    // instead of a first 24% that does nothing. Same ESC model on both
-    // motors, so applied to esc1 too — re-tune ESC_DEADBAND_PCT per motor
-    // if esc1 turns out to need a different threshold.
-    #define ESC_DEADBAND_PCT 24.0f
-    esc1.setDeadbandPercent(ESC_DEADBAND_PCT);
-    esc2.setDeadbandPercent(ESC_DEADBAND_PCT);
+    // Deadband is per-ESC, NOT shared: esc1 was jumping to full throttle at
+    // low commanded pct because it was reusing esc2's 24% calibration, which
+    // doesn't clear esc1's own spin-up threshold cleanly on its specific
+    // ESC/motor pair. Re-run the ramp-up-from-0 calibration on EACH motor
+    // separately (MODE:0, then M1/M2 from 0 upward until it just starts
+    // turning) and set its own threshold below.
+    #define ESC1_DEADBAND_PCT 10.0f // TODO: recalibrate on esc1's motor
+    #define ESC2_DEADBAND_PCT 24.0f
+    esc1.setDeadbandPercent(ESC1_DEADBAND_PCT);
+    esc2.setDeadbandPercent(ESC2_DEADBAND_PCT);
+    esc1.setMaxThrottlePercent(escMaxThrottlePct);
+    esc2.setMaxThrottlePercent(escMaxThrottlePct);
     esc1.arm();
     esc2.arm();
     // Hold the stop pulse so both ESCs finish arming before any throttle
@@ -193,7 +206,8 @@ extern "C" void app_main()
     balancePID.setULimit(BALANCE_OUTPUT_LIMIT_PCT);
 
     printf("BLDC balance/speed controller ready.\n");
-    printf("Commands: MODE:0|1  M1:<pct>  M2:<pct>  SET:<deg>  PID:<kp>,<ki>,<kd>  STOP\n");
+    printf("Commands: MODE:0|1  M1:<pct>  M2:<pct>  SET:<deg>  PID:<kp>,<ki>,<kd>  "
+           "MAXPCT:<pct>  STOP\n");
 
     ctrlTimer.setup(ctrlISR, "CtrlTimer");
     commTimer.setup(commISR, "CommTimer");
