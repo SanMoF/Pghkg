@@ -30,12 +30,46 @@ static const char *TAG = "BMI270";
 // time, correct slow drift with the accelerometer's absolute angle.
 static const float COMP_FILTER_ALPHA = 0.98f;
 
+// ── Anti-vibration low-pass filters ─────────────────────────────────
+// The accel and gyro ODRs below must match REG_ACC_CONF / REG_GYR_CONF in
+// begin() (100 Hz / 200 Hz) — the biquad coefficients are derived from
+// these sample rates, so changing one without the other desyncs the filter.
+static const float ACCEL_FILTER_FS_HZ = 100.0f;
+static const float GYRO_FILTER_FS_HZ  = 200.0f;
+static const float VIBRATION_FILTER_FC_HZ = 20.0f;
+
+// 2nd-order Butterworth low-pass biquad (RBJ Audio EQ Cookbook, Q=1/sqrt(2)),
+// bilinear-transformed at the given sample rate. b/a already normalized by
+// a0, so a[0] = 1.0 and Filter::apply() can use them directly.
+static void computeButterworthLPF(float fc_hz, float fs_hz, float b[3], float a[3])
+{
+    float w0    = 2.0f * (float)M_PI * fc_hz / fs_hz;
+    float cosw0 = cosf(w0);
+    float sinw0 = sinf(w0);
+    float alpha = sinw0 / (2.0f * 0.70710678f); // Q = 1/sqrt(2) => Butterworth
+
+    float a0 = 1.0f + alpha;
+    b[0] = ((1.0f - cosw0) / 2.0f) / a0;
+    b[1] = (1.0f - cosw0) / a0;
+    b[2] = b[0];
+    a[0] = 1.0f;
+    a[1] = (-2.0f * cosw0) / a0;
+    a[2] = (1.0f - alpha) / a0;
+}
+
 BMI270::BMI270(i2c_port_t port, int sda_pin, int scl_pin,
                uint32_t freq_hz, uint8_t addr)
     : _port(port), _sda(sda_pin), _scl(scl_pin),
       _freq(freq_hz), _addr(addr), _timeout_ms(20),
       _gyro_offset_dps(0.0f), _pitch_deg(0.0f), _pitch_ready(false)
 {
+    float b[3], a[3];
+
+    computeButterworthLPF(VIBRATION_FILTER_FC_HZ, ACCEL_FILTER_FS_HZ, b, a);
+    _accelPitchFilter.setup(b, a, 3, 3, 0.0f, 0.0f); // robot assumed level at boot
+
+    computeButterworthLPF(VIBRATION_FILTER_FC_HZ, GYRO_FILTER_FS_HZ, b, a);
+    _gyroRateFilter.setup(b, a, 3, 3, 0.0f, 0.0f); // robot assumed still at boot
 }
 
 esp_err_t BMI270::_readReg(uint8_t reg, uint8_t *data, size_t len) const
@@ -362,8 +396,10 @@ esp_err_t BMI270::update(float dt_s)
     float ay = (float)accel[1] / BMI270_ACCEL_LSB_PER_G;
     float az = (float)accel[2] / BMI270_ACCEL_LSB_PER_G;
     float accel_pitch_deg = atan2f(-ay, az) * 180.0f / (float)M_PI;
+    accel_pitch_deg = _accelPitchFilter.apply(accel_pitch_deg);
 
     float gyro_rate_dps = (float)gyro[0] / BMI270_GYRO_LSB_PER_DPS - _gyro_offset_dps;
+    gyro_rate_dps = _gyroRateFilter.apply(gyro_rate_dps);
 
     if (!_pitch_ready) {
         _pitch_deg   = accel_pitch_deg;

@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "driver/i2c.h"
 #include "esp_err.h"
+#include "Filter.h"
 
 #define BMI270_CHIP_ID_EXPECTED  0x24
 
@@ -76,6 +77,19 @@ private:
     float _gyro_offset_dps;
     float _pitch_deg;
     bool  _pitch_ready;
+
+    // 2nd-order Butterworth low-pass, one per channel, cutoff at 20 Hz.
+    // Configured accel ODR is 100 Hz (Nyquist 50 Hz) and gyro ODR is 200 Hz
+    // (Nyquist 100 Hz) — see begin(). 20 Hz sits comfortably below both
+    // Nyquist limits, well above this robot's balance dynamics (a two-wheel
+    // rocker's pitch changes over <5 Hz), and below where the BLDC motors'
+    // spin vibration couples into the frame — so it knocks down motor
+    // vibration noise without adding meaningful phase lag to the balance
+    // loop. Coefficients from the RBJ Audio EQ Cookbook biquad LPF formula;
+    // retune BMI270.cpp's *_FC_HZ constants from bench vibration data if
+    // this cutoff turns out wrong for the actual mounting.
+    Filter _accelPitchFilter;
+    Filter _gyroRateFilter;
 
     esp_err_t _readReg(uint8_t reg, uint8_t *data, size_t len) const;
     esp_err_t _writeReg(uint8_t reg, uint8_t value) const;
