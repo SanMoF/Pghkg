@@ -15,7 +15,7 @@
 #include "SimpleUART.h"
 #include "SimplePWM.h"
 #include "BLDC_ESC.h"
-#include "BMI270.h"
+#include "MPU6050.h"
 #include "PID_CAYETANO.h"
 
 // ─── Pin Definitions ──────────────────────────────────────────────
@@ -26,11 +26,9 @@
 #define ESC2_PIN     GPIO_NUM_19
 #define ESC2_CH      1
 
-// BMI270 I2C pins (balance sensor)
-// Confirmed healthy on the previous MPU6050 (same physical bus): swapping
-// to GPIO25/26 reproduced the exact same "nothing ACKs" failure, ruling out
-// damage to these pins. Re-verify wiring/address with scanBus() if the
-// BMI270 doesn't respond on first boot — see CONEXIONES.md.
+// MPU6050 I2C pins (balance sensor)
+// Backup branch: this is the pre-BMI270 driver, kept ready in case the
+// BMI270 module fails physically. Same bus/pins as the BMI270 build.
 #define IMU_SDA_PIN  GPIO_NUM_21
 #define IMU_SCL_PIN  GPIO_NUM_22
 
@@ -59,9 +57,7 @@ SimpleTimer  telemTimer;
 SimpleUART   console(CONSOLE_BAUD, UART_NUM_0);
 BLDC_ESC     esc1;
 BLDC_ESC     esc2;
-// Address 0x69 (SDO/AD0 high) — this module answers there on the bench,
-// not the default 0x68 (SDO low).
-BMI270       imu(I2C_NUM_0, IMU_SDA_PIN, IMU_SCL_PIN, 400000, 0x69);
+MPU6050      imu(I2C_NUM_0, IMU_SDA_PIN, IMU_SCL_PIN, 100000);
 PID_CAYETANO balancePID;
 bool         imuAvailable = false; // set once in setup() after imu.begin()
 

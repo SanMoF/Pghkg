@@ -199,7 +199,7 @@ extern "C" void app_main()
     if (imuAvailable)
         imu.calibrateGyro(); // robot must be held still during boot
     else
-        printf("WARNING: BMI270 not detected — balance mode will not work, "
+        printf("WARNING: MPU6050 not detected — balance mode will not work, "
                "IMU reads will be skipped\n");
 
     balancePID.setup(balanceGains, (float)CTRL_DT_US);
@@ -287,12 +287,12 @@ extern "C" void app_main()
                 {
                     printf("[IMU] pitch=%.2f ax=%.3f ay=%.3f az=%.3f gx=%.2f gy=%.2f gz=%.2f\n",
                            imu.getPitchDeg(),
-                           accelRaw[0] / BMI270_ACCEL_LSB_PER_G,
-                           accelRaw[1] / BMI270_ACCEL_LSB_PER_G,
-                           accelRaw[2] / BMI270_ACCEL_LSB_PER_G,
-                           gyroRaw[0] / BMI270_GYRO_LSB_PER_DPS,
-                           gyroRaw[1] / BMI270_GYRO_LSB_PER_DPS,
-                           gyroRaw[2] / BMI270_GYRO_LSB_PER_DPS);
+                           accelRaw[0] / MPU6050_ACCEL_LSB_PER_G,
+                           accelRaw[1] / MPU6050_ACCEL_LSB_PER_G,
+                           accelRaw[2] / MPU6050_ACCEL_LSB_PER_G,
+                           gyroRaw[0] / MPU6050_GYRO_LSB_PER_DPS,
+                           gyroRaw[1] / MPU6050_GYRO_LSB_PER_DPS,
+                           gyroRaw[2] / MPU6050_GYRO_LSB_PER_DPS);
                 }
                 else
                 {
