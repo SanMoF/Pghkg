@@ -86,10 +86,19 @@ float motor2SpeedPct = 0.0f;
 //   esc1 = balanceBasePct + balanceOutputPct
 //   esc2 = balanceBasePct - balanceOutputPct
 float balanceSetpointDeg = 0.0f;         // target pitch, deg
-float balanceGains[3]     = {1.0f, 0.0f, 0.5f}; // Kp, Ki, Kd
+float balanceGains[3]     = {1.0f, 0.5f, 0.01f}; // Kp, Ki, Kd
 float balanceOutputPct    = 0.0f;        // last PID output, for telemetry
-float balanceBasePct      = 40.0f;       // shared thrust both sides mix around
+// Must stay under escMaxThrottlePct with room for +-BALANCE_OUTPUT_LIMIT_PCT,
+// or setThrottlePercent()'s ceiling clamp pins BOTH sides to the same value
+// for the whole PID output range — motors stop responding to angle changes
+// entirely (was 40%, clamped flat against the 30% ceiling below).
+float balanceBasePct      = 20.0f;       // shared thrust both sides mix around
 #define BALANCE_OUTPUT_LIMIT_PCT 10.0f
+// Below this angle error, most of the wobble is noise, not real tilt — cut
+// the shared base thrust way down so the robot settles instead of buzzing
+// the motors at full base speed while sitting on target.
+#define BALANCE_NEAR_SETPOINT_DEG   1.0f
+#define BALANCE_NEAR_SETPOINT_SCALE 0.25f
 
 // ── Runtime throttle ceiling ─────────────────────────────────────────
 // Caps both ESCs' setThrottlePercent() so nothing beyond this ever reaches

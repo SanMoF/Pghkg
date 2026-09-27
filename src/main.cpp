@@ -238,13 +238,20 @@ extern "C" void app_main()
                 float error = balanceSetpointDeg - pitch;
                 balanceOutputPct = balancePID.computedU(error);
 
+                // Near setpoint, drop the shared base way down instead of
+                // holding full base thrust while balanced — otherwise the
+                // motors keep spinning hard on tiny noise once on target.
+                float effectiveBasePct = balanceBasePct;
+                if (fabsf(error) < BALANCE_NEAR_SETPOINT_DEG)
+                    effectiveBasePct *= BALANCE_NEAR_SETPOINT_SCALE;
+
                 // Seesaw balance: differential thrust around a shared base,
                 // one side up and the other down — NOT the same value on
                 // both (that only changes total lift, never the tilt).
                 // setThrottlePercent() clamps each side to [0, 100] on its
                 // own, so this needs no extra clamping here.
-                esc1.setThrottlePercent(balanceBasePct + balanceOutputPct);
-                esc2.setThrottlePercent(balanceBasePct - balanceOutputPct);
+                esc1.setThrottlePercent(effectiveBasePct + balanceOutputPct);
+                esc2.setThrottlePercent(effectiveBasePct - balanceOutputPct);
             }
         }
 
