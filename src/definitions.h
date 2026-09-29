@@ -37,6 +37,7 @@
 
 // ─── Timing ───────────────────────────────────────────────────────
 #define CTRL_DT_US   5000u      // 5 ms  — balance/motor control loop
+#define IMU_MAX_CONSECUTIVE_ERRORS 10 // failed IMU reads in a row (10 x 5 ms = 50 ms) before the IMU is declared lost
 #define CTRL_DT_S    0.005f
 #define COMM_DT_US   20000u     // 20 ms — UART command polling
 #define TELEM_DT_US  300000u    // 300 ms — status printout
@@ -60,6 +61,7 @@ BLDC_ESC     esc2;
 MPU6050      imu(I2C_NUM_0, IMU_SDA_PIN, IMU_SCL_PIN, 100000);
 PID_CAYETANO balancePID;
 bool         imuAvailable = false; // set once in setup() after imu.begin()
+int          imuErrorCount = 0;    // consecutive failed imu.update() calls
 
 // ─── Control Modes ─────────────────────────────────────────────────
 enum ControlMode

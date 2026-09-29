@@ -11,69 +11,73 @@ static const char *TAG = "MPU6050";
 // time, correct slow drift with the accelerometer's absolute angle.
 static const float COMP_FILTER_ALPHA = 0.98f;
 
-MPU6050::MPU6050(i2c_port_t port, int sda_pin, int scl_pin,
+MPU6050::MPU6050(i2c_port_num_t port, int sda_pin, int scl_pin,
                   uint32_t freq_hz, uint32_t timeout)
     : _port(port), _sda(sda_pin), _scl(scl_pin),
-      _freq(freq_hz), _timeout_ms(timeout),
+      _freq(freq_hz), _timeout_ms((int)timeout),
+      _bus(nullptr), _dev(nullptr),
       _gyro_offset_dps(0.0f), _pitch_deg(0.0f), _pitch_ready(false)
 {
 }
 
+MPU6050::~MPU6050()
+{
+    if (_dev) i2c_master_bus_rm_device(_dev);
+    if (_bus) i2c_del_master_bus(_bus);
+}
+
 esp_err_t MPU6050::_read(uint8_t reg, uint8_t *data, size_t len) const
 {
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (MPU6050_I2C_ADDR << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write_byte(cmd, reg, true);
-
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (MPU6050_I2C_ADDR << 1) | I2C_MASTER_READ, true);
-    i2c_master_read(cmd, data, len, I2C_MASTER_LAST_NACK);
-    i2c_master_stop(cmd);
-
-    esp_err_t err = i2c_master_cmd_begin(_port, cmd, pdMS_TO_TICKS(_timeout_ms));
-    i2c_cmd_link_delete(cmd);
+    // Single write-then-repeated-start-read transaction.
+    esp_err_t err = i2c_master_transmit_receive(_dev, &reg, 1, data, len, _timeout_ms);
+    if (err == ESP_ERR_TIMEOUT)
+        i2c_master_bus_reset(_bus); // release a stuck SDA/SCL so the next tick can recover
     return err;
 }
 
 esp_err_t MPU6050::_write(uint8_t reg, uint8_t value) const
 {
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (MPU6050_I2C_ADDR << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write_byte(cmd, reg, true);
-    i2c_master_write_byte(cmd, value, true);
-    i2c_master_stop(cmd);
-
-    esp_err_t err = i2c_master_cmd_begin(_port, cmd, pdMS_TO_TICKS(_timeout_ms));
-    i2c_cmd_link_delete(cmd);
+    const uint8_t buf[2] = {reg, value};
+    esp_err_t err = i2c_master_transmit(_dev, buf, sizeof(buf), _timeout_ms);
+    if (err == ESP_ERR_TIMEOUT)
+        i2c_master_bus_reset(_bus);
     return err;
 }
 
 esp_err_t MPU6050::begin()
 {
-    i2c_config_t conf = {};
-    conf.mode             = I2C_MODE_MASTER;
-    conf.sda_io_num       = (gpio_num_t)_sda;
-    conf.scl_io_num       = (gpio_num_t)_scl;
-    conf.sda_pullup_en    = GPIO_PULLUP_ENABLE;
-    conf.scl_pullup_en    = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = _freq;
+    if (_bus == nullptr) {
+        i2c_master_bus_config_t bus_cfg = {};
+        bus_cfg.i2c_port          = _port;
+        bus_cfg.sda_io_num        = (gpio_num_t)_sda;
+        bus_cfg.scl_io_num        = (gpio_num_t)_scl;
+        bus_cfg.clk_source        = I2C_CLK_SRC_DEFAULT;
+        bus_cfg.glitch_ignore_cnt = 7; // filter spikes from a noisy jumper/ESC EMI
+        bus_cfg.flags.enable_internal_pullup = true;
 
-    esp_err_t err = i2c_param_config(_port, &conf);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_param_config failed: %s", esp_err_to_name(err));
-        return err;
+        esp_err_t berr = i2c_new_master_bus(&bus_cfg, &_bus);
+        if (berr != ESP_OK) {
+            ESP_LOGE(TAG, "i2c_new_master_bus failed: %s", esp_err_to_name(berr));
+            _bus = nullptr;
+            return berr;
+        }
     }
 
-    err = i2c_driver_install(_port, I2C_MODE_MASTER, 0, 0, 0);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_driver_install failed: %s", esp_err_to_name(err));
-        return err;
+    if (_dev == nullptr) {
+        i2c_device_config_t dev_cfg = {};
+        dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+        dev_cfg.device_address  = MPU6050_I2C_ADDR;
+        dev_cfg.scl_speed_hz    = _freq;
+
+        esp_err_t derr = i2c_master_bus_add_device(_bus, &dev_cfg, &_dev);
+        if (derr != ESP_OK) {
+            ESP_LOGE(TAG, "i2c_master_bus_add_device failed: %s", esp_err_to_name(derr));
+            _dev = nullptr;
+            return derr;
+        }
     }
 
+    esp_err_t err;
     uint8_t whoami = 0;
     err = _read(MPU6050_REG_WHO_AM_I, &whoami, 1);
     // Print the raw result unconditionally — on a healthy bus this reads
@@ -120,14 +124,7 @@ void MPU6050::scanBus() const
 {
     int found = 0;
     for (uint8_t addr = 1; addr < 127; addr++) {
-        i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-        i2c_master_start(cmd);
-        i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
-        i2c_master_stop(cmd);
-        esp_err_t err = i2c_master_cmd_begin(_port, cmd, pdMS_TO_TICKS(50));
-        i2c_cmd_link_delete(cmd);
-
-        if (err == ESP_OK) {
+        if (i2c_master_probe(_bus, addr, 50) == ESP_OK) {
             printf("[MPU6050] Device found at 0x%02X\n", addr);
             found++;
         }

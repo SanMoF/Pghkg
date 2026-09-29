@@ -229,10 +229,26 @@ extern "C" void app_main()
             }
             // IMU is updated every control tick regardless of mode, so pitch
             // stays fresh for debugging even outside MODE_BALANCE.
+            // A single failed read (I2C glitch/timeout) is tolerated: skip
+            // this tick's PID with the last motor command held, and only
+            // declare the IMU lost after IMU_MAX_CONSECUTIVE_ERRORS in a row.
+            bool imuFresh = false;
             if (imuAvailable)
-                imuAvailable = (imu.update(CTRL_DT_S) == ESP_OK);
+            {
+                if (imu.update(CTRL_DT_S) == ESP_OK)
+                {
+                    imuFresh = true;
+                    imuErrorCount = 0;
+                }
+                else if (++imuErrorCount >= IMU_MAX_CONSECUTIVE_ERRORS)
+                {
+                    printf("[IMU] %d consecutive read errors — sensor lost, disabling further reads\n",
+                           imuErrorCount);
+                    imuAvailable = false;
+                }
+            }
 
-            if (controlMode == MODE_BALANCE && imuAvailable)
+            if (controlMode == MODE_BALANCE && imuFresh)
             {
                 float pitch = imu.getPitchDeg();
                 float error = balanceSetpointDeg - pitch;
@@ -296,8 +312,10 @@ extern "C" void app_main()
                 }
                 else
                 {
-                    printf("[IMU] read error — sensor lost, disabling further reads\n");
-                    imuAvailable = false;
+                    // Not fatal here: the control loop owns the error counter
+                    // and decides when the IMU is actually lost.
+                    printf("[IMU] telemetry read error (consecutive control errors: %d)\n",
+                           imuErrorCount);
                 }
             }
         }
