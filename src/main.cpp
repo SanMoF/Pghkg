@@ -242,9 +242,24 @@ extern "C" void app_main()
                 }
                 else if (++imuErrorCount >= IMU_MAX_CONSECUTIVE_ERRORS)
                 {
-                    printf("[IMU] %d consecutive read errors — sensor lost, disabling further reads\n",
-                           imuErrorCount);
+                    printf("[IMU] %d consecutive read errors — sensor lost, will retry every %d ms\n",
+                           imuErrorCount, IMU_RECOVER_PERIOD_MS);
                     imuAvailable = false;
+                    imuLost = true;
+                    imuLostAtUs = esp_timer_get_time();
+                }
+            }
+            else if (imuLost && (esp_timer_get_time() - imuLostAtUs) >= IMU_RECOVER_PERIOD_MS * 1000LL)
+            {
+                // Blocking (~20 ms) but only once per period, and balance is
+                // already skipped while the IMU is unavailable.
+                imuLostAtUs = esp_timer_get_time();
+                if (imu.recover() == ESP_OK)
+                {
+                    printf("[IMU] sensor recovered\n");
+                    imuAvailable = true;
+                    imuLost = false;
+                    imuErrorCount = 0;
                 }
             }
 

@@ -55,7 +55,13 @@ public:
     MPU6050 &operator=(const MPU6050 &) = delete;
 
     // Initialise I2C, wake the sensor and verify WHO_AM_I.
-    esp_err_t begin();
+    esp_err_t begin(bool scan_on_fail = true);
+
+    // Tear down and rebuild the I2C bus/device, then re-run begin() quietly
+    // (no bus scan). Use after a run of read timeouts: a hung bus or a
+    // reseated wire does not fix itself. Keeps the gyro offset; re-seeds pitch
+    // from the accelerometer on the next update().
+    esp_err_t recover();
 
     // Average `samples` gyro readings while the robot is stationary to
     // remove the Y-axis (pitch) gyro bias. Blocking — call once from setup.

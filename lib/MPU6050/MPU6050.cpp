@@ -44,7 +44,15 @@ esp_err_t MPU6050::_write(uint8_t reg, uint8_t value) const
     return err;
 }
 
-esp_err_t MPU6050::begin()
+esp_err_t MPU6050::recover()
+{
+    if (_dev) { i2c_master_bus_rm_device(_dev); _dev = nullptr; }
+    if (_bus) { i2c_del_master_bus(_bus);       _bus = nullptr; }
+    _pitch_ready = false;
+    return begin(false);
+}
+
+esp_err_t MPU6050::begin(bool scan_on_fail)
 {
     if (_bus == nullptr) {
         i2c_master_bus_config_t bus_cfg = {};
@@ -81,13 +89,16 @@ esp_err_t MPU6050::begin()
     uint8_t whoami = 0;
     err = _read(MPU6050_REG_WHO_AM_I, &whoami, 1);
     // Print the raw result unconditionally — on a healthy bus this reads
-    // 0x68 (or 0x69 with AD0 pulled high); anything else (0x00, 0xFF, or an
-    // ESP_ERR_TIMEOUT/ESP_FAIL) means the device never ACKed.
+    // 0x68 (MPU6050, or 0x69 with AD0 high). Register-compatible clones/successors
+    // report 0x70 (MPU6500) or 0x71 (MPU9250) — the board in use returns 0x70.
+    // Anything else (0x00, 0xFF, or an ESP_ERR_TIMEOUT/ESP_FAIL) means no ACK.
     printf("[MPU6050] WHO_AM_I read: err=%s value=0x%02X\n", esp_err_to_name(err), whoami);
-    if (err != ESP_OK || (whoami & 0x7E) != 0x68) {
+    const bool idOk = (whoami & 0x7E) == 0x68 || whoami == 0x70 || whoami == 0x71;
+    if (err != ESP_OK || !idOk) {
         ESP_LOGE(TAG, "MPU6050 not responding (WHO_AM_I=0x%02X) — check wiring/address", whoami);
         printf("[MPU6050] Scanning I2C%d bus for any responding device...\n", _port);
-        scanBus();
+        if (scan_on_fail)
+            scanBus();
         return (err != ESP_OK) ? err : ESP_ERR_NOT_FOUND;
     }
 
