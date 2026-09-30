@@ -250,7 +250,7 @@ extern "C" void app_main()
                 }
             }
             else if (imuLost && (esp_timer_get_time() - imuLostAtUs) >= IMU_RECOVER_PERIOD_MS * 1000LL)
-            {
+            
                 // Blocking (~20 ms) but only once per period, and balance is
                 // already skipped while the IMU is unavailable.
                 imuLostAtUs = esp_timer_get_time();
@@ -260,6 +260,7 @@ extern "C" void app_main()
                     imuAvailable = true;
                     imuLost = false;
                     imuErrorCount = 0;
+                    //dsadsada222
                 }
             }
 
