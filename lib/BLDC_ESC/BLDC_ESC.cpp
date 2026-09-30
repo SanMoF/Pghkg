@@ -1,7 +1,8 @@
 #include "BLDC_ESC.h"
 
 BLDC_ESC::BLDC_ESC()
-    : _min_us(1000), _max_us(2000), _period_us(20000), _deadband_pct(0.0f)
+    : _min_us(1000), _max_us(2000), _period_us(20000), _deadband_pct(0.0f),
+      _max_throttle_pct(100.0f)
 {
 }
 
@@ -30,12 +31,21 @@ void BLDC_ESC::setDeadbandPercent(float pct)
     _deadband_pct = pct;
 }
 
-void BLDC_ESC::setThrottlePercent(float pct)
+void BLDC_ESC::setMaxThrottlePercent(float pct)
 {
     if (pct < 0.0f)
         pct = 0.0f;
     if (pct > 100.0f)
         pct = 100.0f;
+    _max_throttle_pct = pct;
+}
+
+void BLDC_ESC::setThrottlePercent(float pct)
+{
+    if (pct < 0.0f)
+        pct = 0.0f;
+    if (pct > _max_throttle_pct)
+        pct = _max_throttle_pct;
 
     // Rescale (0, 100] onto [_deadband_pct, 100] so any positive request
     // clears the motor's real spin-up threshold instead of landing in the

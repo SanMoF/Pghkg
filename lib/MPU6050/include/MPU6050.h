@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "esp_err.h"
 
 #define MPU6050_I2C_ADDR        0x68
@@ -18,6 +18,10 @@
  * @brief Driver for the InvenSense MPU6050 6-axis IMU (I2C), producing a
  *        complementary-filtered pitch angle suitable for a 2-wheel balance
  *        control loop.
+ *
+ * Uses the new ESP-IDF I2C master driver (driver/i2c_master.h). It cannot
+ * coexist in one firmware with the legacy driver/i2c.h (AS5600, TCS34725,
+ * i2c_lcd libs) — IDF aborts at boot if both are linked in.
  *
  * Usage:
  * @code
@@ -37,14 +41,27 @@ public:
     // glitches at 400kHz that show up as total silence (every transaction
     // NACKs) rather than a clean speed-limited error. Drop to 100kHz first
     // when debugging "nothing responds" before suspecting the wiring itself.
-    MPU6050(i2c_port_t port    = I2C_NUM_0,
-            int        sda_pin = 21,
-            int        scl_pin = 22,
-            uint32_t   freq_hz = 100000,
-            uint32_t   timeout = 1000);
+    // timeout is per transaction, in ms. Kept short (was 1000) because
+    // update() runs inside the 5 ms control loop: a stuck bus must fail fast
+    // instead of freezing the loop for a second.
+    MPU6050(i2c_port_num_t port    = I2C_NUM_0,
+            int            sda_pin = 21,
+            int            scl_pin = 22,
+            uint32_t       freq_hz = 100000,
+            uint32_t       timeout = 20);
+
+    ~MPU6050();
+    MPU6050(const MPU6050 &) = delete;
+    MPU6050 &operator=(const MPU6050 &) = delete;
 
     // Initialise I2C, wake the sensor and verify WHO_AM_I.
-    esp_err_t begin();
+    esp_err_t begin(bool scan_on_fail = true);
+
+    // Tear down and rebuild the I2C bus/device, then re-run begin() quietly
+    // (no bus scan). Use after a run of read timeouts: a hung bus or a
+    // reseated wire does not fix itself. Keeps the gyro offset; re-seeds pitch
+    // from the accelerometer on the next update().
+    esp_err_t recover();
 
     // Average `samples` gyro readings while the robot is stationary to
     // remove the Y-axis (pitch) gyro bias. Blocking — call once from setup.
@@ -67,11 +84,13 @@ public:
     float getPitchDeg() const { return _pitch_deg; }
 
 private:
-    i2c_port_t _port;
-    int        _sda;
-    int        _scl;
-    uint32_t   _freq;
-    uint32_t   _timeout_ms;
+    i2c_port_num_t          _port;
+    int                     _sda;
+    int                     _scl;
+    uint32_t                _freq;
+    int                     _timeout_ms;
+    i2c_master_bus_handle_t _bus;
+    i2c_master_dev_handle_t _dev;
 
     float _gyro_offset_dps;
     float _pitch_deg;

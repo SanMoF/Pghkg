@@ -13,6 +13,11 @@ static void IRAM_ATTR telemISR(void *arg) { telemTimer.setInterrupt(); }
 //   M2:<pct>          motor 2 speed, 0..100 %   (mode 0 only, no reverse — ESCs are unidirectional)
 //   SET:<deg>         balance setpoint (target pitch, deg)
 //   PID:<kp>,<ki>,<kd> balance PID gains
+//   BASE:<pct>        balance base thrust, 0..100 % — both motors mix
+//                      around this; the PID output adds to one side and
+//                      subtracts from the other (mode 1 only)
+//   MAXPCT:<pct>      throttle ceiling, 0..100 % — caps both ESCs'
+//                      setThrottlePercent() regardless of mode
 //   STOP              zero both motors and force mode 0 (safety)
 //
 // Example (type into the PlatformIO serial monitor, one per line):
@@ -21,7 +26,8 @@ static void IRAM_ATTR telemISR(void *arg) { telemTimer.setInterrupt(); }
 //   M2:30
 //   MODE:1
 //   SET:0.0
-//   PID:12.0,0.5,0.8
+//   PID:1.0,0.5,0.8
+//   BASE:40
 //
 static void processUartLine(char *line)
 {
@@ -102,6 +108,22 @@ static void processUartLine(char *line)
         balancePID.setULimit(BALANCE_OUTPUT_LIMIT_PCT);
         printf("-> PID Kp=%.3f Ki=%.3f Kd=%.3f\n", kp, ki, kd);
     }
+    else if (strcmp(line, "BASE") == 0 && args)
+    {
+        balanceBasePct = atof(args);
+        if (balanceBasePct < 0.0f)   balanceBasePct = 0.0f;
+        if (balanceBasePct > 100.0f) balanceBasePct = 100.0f;
+        printf("-> BASE=%.1f%%\n", balanceBasePct);
+    }
+    else if (strcmp(line, "MAXPCT") == 0 && args)
+    {
+        escMaxThrottlePct = atof(args);
+        if (escMaxThrottlePct < 0.0f)   escMaxThrottlePct = 0.0f;
+        if (escMaxThrottlePct > 100.0f) escMaxThrottlePct = 100.0f;
+        esc1.setMaxThrottlePercent(escMaxThrottlePct);
+        esc2.setMaxThrottlePercent(escMaxThrottlePct);
+        printf("-> MAXPCT=%.1f%%\n", escMaxThrottlePct);
+    }
     else if (strcmp(line, "STOP") == 0)
     {
         motor1SpeedPct = 0.0f;
@@ -154,16 +176,18 @@ extern "C" void app_main()
 
     esc1.setup(ESC1_PIN, ESC1_CH, &ESC_TIMER);
     esc2.setup(ESC2_PIN, ESC2_CH, &ESC_TIMER);
-    // Calibrated on esc2: the motor doesn't actually spin below a commanded
-    // ~24% on the old linear scale (ESC/motor spin-up dead zone). Rescaling
-    // by that amount means any pct > 0 sent over UART now clears the dead
-    // zone, giving the PID real resolution near the start of the range
-    // instead of a first 24% that does nothing. Same ESC model on both
-    // motors, so applied to esc1 too — re-tune ESC_DEADBAND_PCT per motor
-    // if esc1 turns out to need a different threshold.
-    #define ESC_DEADBAND_PCT 24.0f
-    esc1.setDeadbandPercent(ESC_DEADBAND_PCT);
-    esc2.setDeadbandPercent(ESC_DEADBAND_PCT);
+    // Deadband is per-ESC, NOT shared: esc1 was jumping to full throttle at
+    // low commanded pct because it was reusing esc2's 24% calibration, which
+    // doesn't clear esc1's own spin-up threshold cleanly on its specific
+    // ESC/motor pair. Re-run the ramp-up-from-0 calibration on EACH motor
+    // separately (MODE:0, then M1/M2 from 0 upward until it just starts
+    // turning) and set its own threshold below.
+    #define ESC1_DEADBAND_PCT 10.0f // TODO: recalibrate on esc1's motor
+    #define ESC2_DEADBAND_PCT 24.0f
+    esc1.setDeadbandPercent(ESC1_DEADBAND_PCT);
+    esc2.setDeadbandPercent(ESC2_DEADBAND_PCT);
+    esc1.setMaxThrottlePercent(escMaxThrottlePct);
+    esc2.setMaxThrottlePercent(escMaxThrottlePct);
     esc1.arm();
     esc2.arm();
     // Hold the stop pulse so both ESCs finish arming before any throttle
@@ -182,7 +206,8 @@ extern "C" void app_main()
     balancePID.setULimit(BALANCE_OUTPUT_LIMIT_PCT);
 
     printf("BLDC balance/speed controller ready.\n");
-    printf("Commands: MODE:0|1  M1:<pct>  M2:<pct>  SET:<deg>  PID:<kp>,<ki>,<kd>  STOP\n");
+    printf("Commands: MODE:0|1  M1:<pct>  M2:<pct>  SET:<deg>  PID:<kp>,<ki>,<kd>  "
+           "MAXPCT:<pct>  STOP\n");
 
     ctrlTimer.setup(ctrlISR, "CtrlTimer");
     commTimer.setup(commISR, "CommTimer");
@@ -204,17 +229,61 @@ extern "C" void app_main()
             }
             // IMU is updated every control tick regardless of mode, so pitch
             // stays fresh for debugging even outside MODE_BALANCE.
+            // A single failed read (I2C glitch/timeout) is tolerated: skip
+            // this tick's PID with the last motor command held, and only
+            // declare the IMU lost after IMU_MAX_CONSECUTIVE_ERRORS in a row.
+            bool imuFresh = false;
             if (imuAvailable)
-                imuAvailable = (imu.update(CTRL_DT_S) == ESP_OK);
+            {
+                if (imu.update(CTRL_DT_S) == ESP_OK)
+                {
+                    imuFresh = true;
+                    imuErrorCount = 0;
+                }
+                else if (++imuErrorCount >= IMU_MAX_CONSECUTIVE_ERRORS)
+                {
+                    printf("[IMU] %d consecutive read errors — sensor lost, will retry every %d ms\n",
+                           imuErrorCount, IMU_RECOVER_PERIOD_MS);
+                    imuAvailable = false;
+                    imuLost = true;
+                    imuLostAtUs = esp_timer_get_time();
+                }
+            }
+            else if (imuLost && (esp_timer_get_time() - imuLostAtUs) >= IMU_RECOVER_PERIOD_MS * 1000LL)
+            
+                // Blocking (~20 ms) but only once per period, and balance is
+                // already skipped while the IMU is unavailable.
+                imuLostAtUs = esp_timer_get_time();
+                if (imu.recover() == ESP_OK)
+                {
+                    printf("[IMU] sensor recovered\n");
+                    imuAvailable = true;
+                    imuLost = false;
+                    imuErrorCount = 0;
+                    //dsadsada222
+                }
+            }
 
-            if (controlMode == MODE_BALANCE && imuAvailable)
+            if (controlMode == MODE_BALANCE && imuFresh)
             {
                 float pitch = imu.getPitchDeg();
                 float error = balanceSetpointDeg - pitch;
                 balanceOutputPct = balancePID.computedU(error);
 
-                esc1.setThrottlePercent(balanceOutputPct);
-                esc2.setThrottlePercent(balanceOutputPct);
+                // Near setpoint, drop the shared base way down instead of
+                // holding full base thrust while balanced — otherwise the
+                // motors keep spinning hard on tiny noise once on target.
+                float effectiveBasePct = balanceBasePct;
+                if (fabsf(error) < BALANCE_NEAR_SETPOINT_DEG)
+                    effectiveBasePct *= BALANCE_NEAR_SETPOINT_SCALE;
+
+                // Seesaw balance: differential thrust around a shared base,
+                // one side up and the other down — NOT the same value on
+                // both (that only changes total lift, never the tilt).
+                // setThrottlePercent() clamps each side to [0, 100] on its
+                // own, so this needs no extra clamping here.
+                esc1.setThrottlePercent(effectiveBasePct + balanceOutputPct);
+                esc2.setThrottlePercent(effectiveBasePct - balanceOutputPct);
             }
         }
 
@@ -231,8 +300,10 @@ extern "C" void app_main()
             }
             else
             {
-                printf("[BALANCE] pitch=%.2f set=%.2f out=%.2f%% (Kp=%.2f Ki=%.2f Kd=%.2f)\n",
-                       imu.getPitchDeg(), balanceSetpointDeg, balanceOutputPct,
+                printf("[BALANCE] pitch=%.2f set=%.2f base=%.1f%% out=%.2f%% -> "
+                       "M1=%.1f%% M2=%.1f%% (Kp=%.2f Ki=%.2f Kd=%.2f)\n",
+                       imu.getPitchDeg(), balanceSetpointDeg, balanceBasePct, balanceOutputPct,
+                       balanceBasePct + balanceOutputPct, balanceBasePct - balanceOutputPct,
                        balanceGains[0], balanceGains[1], balanceGains[2]);
             }
 
@@ -257,8 +328,10 @@ extern "C" void app_main()
                 }
                 else
                 {
-                    printf("[IMU] read error — sensor lost, disabling further reads\n");
-                    imuAvailable = false;
+                    // Not fatal here: the control loop owns the error counter
+                    // and decides when the IMU is actually lost.
+                    printf("[IMU] telemetry read error (consecutive control errors: %d)\n",
+                           imuErrorCount);
                 }
             }
         }
